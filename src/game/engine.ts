@@ -14,6 +14,7 @@ import type {
   StartPayload,
   Tour,
 } from './types'
+import { createPeople, isRoomOpen as roomOpen, roomOf as roomOfRoom } from './people'
 import {
   ACTIVITIES,
   ASSETS,
@@ -82,28 +83,74 @@ export function yearOf(hour: number): number {
 // ---------------------------------------------------------------------------
 
 export function fameOf(s: GameState): number {
-  const follows = 16 * Math.log10(1 + s.followers / 800)
+  const follows = 16 * Math.log10(1 + s.followers / 2000)
   const listens = 5 * Math.log10(1 + s.listeners / 30000)
   const bestPeak = s.songs.reduce((acc, x) => Math.min(acc, x.peak || 999), 999)
-  const chartBonus = bestPeak <= 1 ? 9 : bestPeak <= 3 ? 7 : bestPeak <= 10 ? 4.5 : bestPeak <= 25 ? 2 : 0
+  const chartBonus = bestPeak <= 1 ? 6 : bestPeak <= 3 ? 4.5 : bestPeak <= 10 ? 2.5 : bestPeak <= 25 ? 1 : 0
   const awards = Math.min(14, s.awards.filter((a) => a.won).length * 1.4)
   const lvl = s.legacyLevel * 2
   return clamp(1 + follows + listens + chartBonus + awards + lvl, 0, 100)
+}
+
+/**
+ * Reach is the whole point of the social game: radio rotation, press and a manager
+ * are the only things that turn a record into a wide audience.
+ */
+export function reachConvOf(s: GameState): number {
+  return Math.pow(Math.max(reachOf(s), 0.2) / 0.55, TUNE.reachExp)
+}
+
+export function reachOf(s: GameState): number {
+  const radio = [0.55, 0.75, 1.0, 1.3, 1.7, 2.1][clamp(s.radioTier, 0, 5)]
+  const press = 1 + (s.press?.level ?? 0) * 0.16
+  const mgr = s.manager ? 1.28 : 1
+  return radio * press * mgr
+}
+
+/** Audience-scaled effects saturate (see store.sat). */
+export function sat(followers: number): number {
+  return (followers * 22000) / (followers + 22000)
+}
+
+/** Balance knobs, exported so the headless balance bot can probe the curve. */
+export const TUNE = {
+  streamBase: 40,
+  fanExp: 0.6,
+  catalogExp: 0.85,
+  conv: 0.0011,
+  reachExp: 2.6,
+  churn: 0.0021,
+  churnExp: 0.45,
+}
+
+// Attention is finite: a big catalogue does not multiply itself, it divides.
+let catRef: unknown = null
+let catN = 1
+function releasedCount(s: GameState): number {
+  if (catRef !== s.songs) {
+    catRef = s.songs
+    catN = Math.max(1, s.songs.reduce((a, b) => a + (b.released ? 1 : 0), 0))
+  }
+  return catN
 }
 
 export function streamsPerHour(s: GameState, song: Song): number {
   if (!song.released || song.releaseHour === null) return 0
   const fanF = Math.max(s.followers, 20) / 40
   const qF = Math.pow(Math.max(song.quality, 5) / 40, 2.4)
-  const base = 19 * Math.pow(fanF, 0.55) * qF
+  const attention = 1 / Math.pow(releasedCount(s), TUNE.catalogExp)
+  // old records fade; a catalogue earns a living, it does not compound
+  const ageWeeks = Math.max(0, s.hour - song.releaseHour) / 168
+  const ageF = Math.max(0.35, 1 / (1 + ageWeeks / 34))
+  const base = TUNE.streamBase * Math.pow(fanF, TUNE.fanExp) * qF * attention * ageF
   const ageH = Math.max(0, s.hour - song.releaseHour)
   // launch spike, then a long streaming tail
   const spike = ageH < 60 ? 1 + 1.15 * (1 - ageH / 60) : 1
-  const decay = 0.02 + 0.98 * Math.exp(-ageH / 460)
+  const decay = 0.02 + 0.98 * Math.exp(-ageH / 900)
   const videoMult = song.video === 'concept' ? 1.22 : song.video === 'lyric' ? 1.1 : 1
   const hypeMult = 1 + song.hype * 0.011
   const playlistMult = 1 + song.playlistTier * 0.0 + (song.playlistTier > 0 ? PLAYLIST_TIERS[song.playlistTier - 1].mult - 1 : 0)
-  const radioMult = RADIO_TIERS[s.radioTier]?.mult ?? 1
+  const radioMult = reachOf(s)
   const labelPush = s.label ? s.label.push : 1
   const genre = genreOf(song.genre)
   const dissMult = song.isDiss ? 1.3 : 1
@@ -217,6 +264,14 @@ export function initialState(payload: StartPayload): GameState {
     songs: [],
     albums: [],
     rivals: createRivals(),
+    people: createPeople(START_HOURS),
+    room: null,
+    roomEnteredHour: 0,
+    dialogue: null,
+    beat: null,
+    boons: { nextSongQuality: 0, nextSongDiscount: 0, videoDiscount: 0, studioVisitId: null },
+    manager: null,
+    press: { level: 0, lastPieceWeek: 0 },
     offers: [],
     label: null,
     charts: { week: 0, songs: [], albums: [], artists: [] },
@@ -230,6 +285,7 @@ export function initialState(payload: StartPayload): GameState {
     radioTier: 0,
     playlistPush: 0,
     promoSpend: 0,
+  cooldowns: {},
     featuresBought: [],
     retired: false,
     legacyLevel: 0,
@@ -336,8 +392,14 @@ export function computeCharts(s: GameState): Charts {
     }
   }
 
+  // The Hot 100 is a gatekeeping machine. A song only registers if radio,
+  // curators or a label are already moving it. Unsigned and unpushed, you can
+  // stream all day and never appear.
+  const reach = reachOf(s)
+  const pushed = reach >= 0.9 || s.hype >= 45 || s.press.level > 0 || !!s.label
   for (const song of s.songs) {
     if (!song.released || song.albumId) continue
+    if (!pushed && song.playlistTier === 0 && song.quality < 62) continue
     songs.push({
       key: song.id,
       title: song.title,
@@ -349,6 +411,7 @@ export function computeCharts(s: GameState): Charts {
   }
   for (const album of s.albums) {
     if (!album.released) continue
+    if (!pushed) continue
     albums.push({
       key: album.id,
       title: album.title,
@@ -386,6 +449,15 @@ function rollWeek(s: GameState) {
     const idx = s.charts.songs.findIndex((e) => e.key === song.id)
     if (idx >= 0) {
       const rank = idx + 1
+      if (rank <= 40) {
+        // Charting only recruits if somebody is already carrying the record
+        const chartReach = Math.min(1.6, Math.max(0.12, reachConvOf(s) * 0.22))
+        const pull = song.streamsThisWeek * 0.0016 * (1 + (40 - rank) / 12) * chartReach
+        s.followers += pull
+        if (rank <= 10 && song.peak !== rank && Math.random() < 0.5) {
+          log(s, `📈 "${song.title}" is at #${rank}. People who never listened are listening.`, 'good')
+        }
+      }
       song.peak = song.peak === 0 ? rank : Math.min(song.peak, rank)
       if (rank === 1 && !s.milestones.includes('no1')) {
         s.milestones.push('no1')
@@ -420,11 +492,41 @@ function rollWeek(s: GameState) {
     }
   }
 
+  decayRelationships(s)
   maybeAwards(s)
   maybeOffers(s)
   // song fades
   for (const song of s.songs) {
     if (song.released && (s.hour - (song.releaseHour ?? 0)) > WEEK_HOURS * 90) song.dead = true
+  }
+}
+
+function decayRelationships(s: GameState) {
+  for (const p of s.people) {
+    p.favorsThisWeek = 0
+    p.patience = clamp(p.patience + 14, 0, 100)
+    if (!p.met) continue
+    const days = (s.hour - p.lastSeenHour) / 24
+    if (days > 6) {
+      const drift = (days - 6) * 0.42
+      p.affinity = clamp(p.affinity - drift, -100, 100)
+      if (p.traits.includes('loyal')) p.affinity = clamp(p.affinity + drift * 0.45, -100, 100)
+    }
+    // a burned contact does not stay quiet
+    if (p.affinity < -25) {
+      p.grudge = clamp(p.grudge + rand(1, 4), 0, 100)
+      if (p.grudge > 25 && Math.random() < 0.24) {
+        const trait = p.traits.find((t) => t === 'gossip' || t === 'ruthless' || t === 'volatile')
+        if (trait) {
+          log(s, `🗣️ ${p.name} is telling people you are difficult. It gets back to you by Friday.`, 'bad')
+          s.hype = clamp(s.hype - 4, 0, 100)
+          s.controversy = clamp(s.controversy + 6, 0, 100)
+        }
+      }
+    }
+    if (p.patience <= 0) {
+      p.affinity = clamp(p.affinity - 6, -100, 100)
+    }
   }
 }
 
@@ -549,10 +651,15 @@ function simulateHours(s: GameState, dt: number) {
   // fans from streams
   // early novelty converts easily; once you are big you need real momentum to move the needle
   const novelty = 1 + 3.4 * Math.exp(-s.followers / 25000)
-  const conversion = 0.0017 * novelty * (1 + s.skills.charisma / 130) * (1 + s.hype / 260)
+  // A stream is a listen. A fan is a decision — and people only decide when
+  // somebody they trust puts you in front of them.
+  // Nobody becomes a fan of a stranger. Reach is the measure of how many
+  // people have actually been put in front of you by somebody else.
+  const reachConv = reachConvOf(s)
+  const conversion = TUNE.conv * novelty * reachConv * (1 + s.skills.charisma / 160) * (1 + s.hype / 320)
   let newFans = hourStreams * conversion
   // organic churn — the bigger you are, the more attention you have to keep earning
-  const churn = s.followers * 0.0016 * Math.pow(Math.max(1, s.followers) / 1e6, 0.45) * dt
+  const churn = s.followers * TUNE.churn * Math.pow(Math.max(1, s.followers) / 1e6, TUNE.churnExp) * dt
   s.followers = Math.max(20, s.followers + newFans - churn)
 
   // monthly listeners: smoothed toward a rolling estimate
@@ -592,6 +699,17 @@ function simulateHours(s: GameState, dt: number) {
     }
   }
   if (s.videos.some((v) => v.hoursLeft <= 0)) s.videos = s.videos.filter((v) => v.hoursLeft > 0)
+
+  // the room closes and empties you out with it
+  if (s.room) {
+    const def = roomOfRoom(s.room)
+    if (!roomOpen(def, s.hour)) {
+      s.room = null
+      s.dialogue = null
+      s.beat = null
+      log(s, `${def.emoji} ${def.name} is closing. The lights come up and everyone becomes an ordinary person.`, 'neutral')
+    }
+  }
 
   // rivals posting
   if (Math.random() < 0.02 * dt) rivalEvent(s)
@@ -670,11 +788,22 @@ export function skillUpCost(skill: number): number {
   return Math.round(55 + Math.pow(skill, 1.55) * 3.4)
 }
 
+export function activityPay(s: GameState, actId: string): number {
+  const def = ACTIVITIES.find((a) => a.id === actId)
+  if (!def?.money) return 0
+  return Math.round(def.money + Math.sqrt(s.followers) * 26 + fameOf(s) * 24)
+}
+
+export function activityCooldownLeft(s: GameState, a: { id: string; cooldown?: number }): number {
+  if (!a.cooldown) return 0
+  return Math.max(0, (s.cooldowns?.[a.id] ?? -9999) + a.cooldown - s.hour)
+}
+
 export function activityFollowersGain(s: GameState, actId: string): number {
   const base = ACTIVITIES.find((a) => a.id === actId)?.followers ?? 0
-  if (actId === 'post-clip') return Math.round(6 + s.followers * 0.018 * (1 + s.skills.charisma / 100))
-  if (actId === 'go-live') return Math.round(20 + s.followers * 0.035 * (1 + s.skills.charisma / 100))
-  if (actId === 'local-show') return Math.round(18 + fameOf(s) * 9)
+  if (actId === 'post-clip') return Math.round(6 + sat(s.followers) * 0.05 * (1 + s.skills.charisma / 100))
+  if (actId === 'go-live') return Math.round(20 + sat(s.followers) * 0.09 * (1 + s.skills.charisma / 100))
+  if (actId === 'local-show') return Math.round(8 + Math.min(fameOf(s), 45) * 1.1)
   return base
 }
 

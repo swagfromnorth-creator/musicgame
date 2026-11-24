@@ -5,21 +5,21 @@ import { Home } from './screens/Home'
 import { Studio } from './screens/Studio'
 import { Career } from './screens/Career'
 import { Charts } from './screens/Charts'
-import { Social } from './screens/Social'
+import { Scene } from './screens/Scene'
 import { Business } from './screens/Business'
 import { Life } from './screens/Life'
 import { fameOf, totalStreamsPerHour, weekOf, yearOf } from './game/engine'
 import { fameTier, money, ui } from './game/data'
 import { Bar, Btn, PortraitArt } from './components/Shared'
 
-type TabId = 'home' | 'studio' | 'career' | 'charts' | 'social' | 'biz' | 'life'
+type TabId = 'home' | 'studio' | 'career' | 'charts' | 'scene' | 'biz' | 'life'
 
 const TABS: { id: TabId; icon: string; label: string }[] = [
   { id: 'home', icon: '🏠', label: 'Home' },
   { id: 'studio', icon: '🎵', label: 'Studio' },
   { id: 'career', icon: '💪', label: 'Grind' },
   { id: 'charts', icon: '📊', label: 'Charts' },
-  { id: 'social', icon: '🔥', label: 'Scene' },
+  { id: 'scene', icon: '🍸', label: 'Scene' },
   { id: 'biz', icon: '💼', label: 'Biz' },
   { id: 'life', icon: '🏝️', label: 'Life' },
 ]
@@ -127,7 +127,7 @@ function Root() {
         {tab === 'studio' && <Studio s={s} />}
         {tab === 'career' && <Career s={s} />}
         {tab === 'charts' && <Charts s={s} />}
-        {tab === 'social' && <Social s={s} />}
+        {tab === 'scene' && <Scene s={s} />}
         {tab === 'biz' && <Business s={s} />}
         {tab === 'life' && <Life s={s} />}
       </main>
@@ -140,6 +140,7 @@ function Root() {
               <span className="lbl">{t.label}</span>
               {t.id === 'studio' && s.pending && <span className="dot" />}
               {t.id === 'biz' && s.offers.length > 0 && <span className="dot" />}
+              {t.id === 'scene' && s.room && <span className="dot" />}
             </button>
           ))}
         </div>

@@ -100,19 +100,21 @@ export interface ActivityDef {
   money?: number
   blurb: string
   minFame?: number
+  /** Hours before you can do this again. Real life has a calendar. */
+  cooldown?: number
 }
 
 export const ACTIVITIES: ActivityDef[] = [
   { id: 'rest', name: 'Rest Day', emoji: '🛌', cost: 0, energy: 45, health: 6, blurb: 'Eat, sleep, silence the phone. Worth more than you think.' },
-  { id: 'local-show', name: 'Local Show', emoji: '🎪', cost: 0, energy: -15, hype: 2, money: 340, blurb: 'A club, a cover charge, and a cut of the door. The oldest way to get paid.' },
-  { id: 'gym', name: 'Trainer Session', emoji: '🏋️', cost: 150, energy: -8, health: 9, blurb: 'Looks good on camera. Adds years to the career.', skill: 'performance', xp: 3 },
-  { id: 'vocal-coach', name: 'Vocal Coach', emoji: '🎙️', cost: 200, energy: -12, skill: 'vocals', xp: 11, blurb: 'Range, breath, stamina. Nobody hears the work, everybody hears the result.' },
-  { id: 'writing-room', name: 'Writing Room', emoji: '✍️', cost: 180, energy: -12, skill: 'songwriting', xp: 11, blurb: 'Four hours, three notebooks, one great line.' },
-  { id: 'producer-collab', name: 'Studio Time', emoji: '🎛️', cost: 350, energy: -14, skill: 'production', xp: 11, blurb: 'Learning the boards. Every engineer beams you something.' },
-  { id: 'dance', name: 'Choreography', emoji: '💃', cost: 220, energy: -15, skill: 'performance', xp: 10, followers: 40, blurb: 'Clip it, post it, let the algorithm do the rest.' },
-  { id: 'club-appearance', name: 'Club Appearance', emoji: '🍾', cost: 1250, energy: -18, hype: 5, followers: 500, health: -4, blurb: 'Paid to stand near a bottle. Somehow still networking.', minFame: 8 },
-  { id: 'post-clip', name: 'Post a Clip', emoji: '📱', cost: 0, energy: -5, hype: 2, blurb: 'Fifteen seconds of the hook. The algorithm decides the rest.' },
-  { id: 'go-live', name: 'Go Live', emoji: '🔴', cost: 0, energy: -12, hype: 4, blurb: 'Unfiltered, unedited, three hours of talking to your fans.', minFame: 3 },
+  { id: 'local-show', name: 'Local Show', emoji: '🎪', cost: 0, energy: -15, hype: 2, money: 120, blurb: 'A club, a cover charge, and a cut of the door. The oldest way to get paid.', cooldown: 26 },
+  { id: 'gym', name: 'Trainer Session', emoji: '🏋️', cost: 150, energy: -8, health: 9, blurb: 'Looks good on camera. Adds years to the career.', cooldown: 20, skill: 'performance', xp: 3 },
+  { id: 'vocal-coach', name: 'Vocal Coach', emoji: '🎙️', cost: 200, energy: -12, skill: 'vocals', xp: 11, blurb: 'Range, breath, stamina. Nobody hears the work, everybody hears the result.', cooldown: 16 },
+  { id: 'writing-room', name: 'Writing Room', emoji: '✍️', cost: 180, energy: -12, skill: 'songwriting', xp: 11, blurb: 'Four hours, three notebooks, one great line.', cooldown: 16 },
+  { id: 'producer-collab', name: 'Studio Time', emoji: '🎛️', cost: 350, energy: -14, skill: 'production', xp: 11, blurb: 'Learning the boards. Every engineer beams you something.', cooldown: 16 },
+  { id: 'dance', name: 'Choreography', emoji: '💃', cost: 220, energy: -15, skill: 'performance', xp: 10, followers: 40, blurb: 'Clip it, post it, let the algorithm do the rest.', cooldown: 12 },
+  { id: 'club-appearance', name: 'Club Appearance', emoji: '🍾', cost: 1250, energy: -18, hype: 5, followers: 500, health: -4, blurb: 'Paid to stand near a bottle. Somehow still networking.', cooldown: 40, minFame: 8 },
+  { id: 'post-clip', name: 'Post a Clip', emoji: '📱', cost: 0, energy: -5, hype: 2, blurb: 'Fifteen seconds of the hook. The algorithm decides the rest.', cooldown: 8 },
+  { id: 'go-live', name: 'Go Live', emoji: '🔴', cost: 0, energy: -12, hype: 4, blurb: 'Unfiltered, unedited, three hours of talking to your fans.', cooldown: 30, minFame: 3 },
 ]
 
 export interface TourTier {

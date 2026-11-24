@@ -115,6 +115,42 @@ async function main() {
     const rec = Array.from(document.querySelectorAll('button')).find((b: any) => (b.textContent || '').includes('Record the session')) as any
     console.log('record btn?', !!rec, rec?.disabled)
   }
+  // ---- scene flow: enter a room, meet somebody, talk, reply
+  const nav = Array.from(document.querySelectorAll('nav button')) as any[]
+  const sceneTab = nav.find((b) => (b.textContent || '').includes('Scene'))
+  await act(async () => { sceneTab.dispatchEvent(new dom.window.MouseEvent('click', { bubbles: true })) })
+  await new Promise((r) => setTimeout(r, 40))
+  console.log('scene has rooms:', /Studio 8|Blue Room|Radio Row/.test(document.body.textContent || ''))
+  const enter = Array.from(document.querySelectorAll('button')).find((b: any) => (b.textContent || '').trim() === 'Walk in') as any
+  console.log('enter button:', !!enter)
+  if (enter) {
+    await act(async () => { enter.dispatchEvent(new dom.window.MouseEvent('click', { bubbles: true })) })
+    await new Promise((r) => setTimeout(r, 40))
+    const t = (document.body.textContent || '').replace(/\s+/g, ' ')
+    console.log('in room:', /you are here/.test(t), '| people listed:', document.querySelectorAll('.card.tight button, .card.tight').length > 0)
+    const cards = Array.from(document.querySelectorAll('button.card')) as any[]
+    console.log('person cards:', cards.length)
+    if (cards[0]) {
+      await act(async () => { cards[0].dispatchEvent(new dom.window.MouseEvent('click', { bubbles: true })) })
+      await new Promise((r) => setTimeout(r, 40))
+      const sheetText = (document.querySelector('.sheet')?.textContent || '').replace(/\s+/g, ' ')
+      console.log('person sheet:', sheetText.slice(0, 120))
+      const talk = Array.from(document.querySelectorAll('.sheet button')).find((b: any) => (b.textContent || '').includes('Small talk')) as any
+      console.log('topic button?', !!talk)
+      if (talk) {
+        await act(async () => { talk.dispatchEvent(new dom.window.MouseEvent('click', { bubbles: true })) })
+        await new Promise((r) => setTimeout(r, 40))
+        const opts = Array.from(document.querySelectorAll('.sheet button.opt')) as any[]
+        console.log('reply options:', opts.length, (opts[0]?.textContent || '').slice(0, 70))
+        if (opts[0]) {
+          await act(async () => { opts[0].dispatchEvent(new dom.window.MouseEvent('click', { bubbles: true })) })
+          await new Promise((r) => setTimeout(r, 40))
+          console.log('outcome shown:', /landed|did not land/.test(document.querySelector('.sheet')?.textContent || ''))
+        }
+      }
+    }
+  }
+
   console.log('ERRORS:', errors.length)
   process.exit(0)
 }

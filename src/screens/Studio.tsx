@@ -1,6 +1,7 @@
 import { useMemo, useState } from 'react'
 import { GENRES, MOODS, PRODUCERS, STYLES, genreNameOf, money, moodNameOf, randomTitle, styleNameOf, ui } from '../game/data'
 import { gradeFor, streamsPerHour } from '../game/engine'
+import { roleOf } from '../game/people'
 import type { GameState, MoodId, Song, StyleId } from '../game/types'
 import { Art, Bar, Btn, Grade, Sheet } from '../components/Shared'
 import { useGame } from '../game/store'
@@ -262,7 +263,7 @@ export function Studio({ s }: { s: GameState }) {
       </div>
       <div className="card">
         <div className="row between" style={{ marginBottom: 8 }}>
-          <div className="tiny muted">A session costs energy and cash. Quality depends on your skills.</div>
+          <div className="tiny muted">A session costs cash, energy and about fourteen hours of your life. Quality comes from your skills and the room you book.</div>
         </div>
         <div className="grid3">
           <MiniStat k="Songwriting" v={Math.floor(s.skills.songwriting)} />
@@ -365,9 +366,10 @@ function WriteSheet({ open, onClose, s }: { open: boolean; onClose: () => void; 
   const [featureId, setFeatureId] = useState<string | null>(null)
 
   const producer = PRODUCERS.find((p) => p.id === producerId) ?? PRODUCERS[0]
-  const feature = s.rivals.find((r) => r.id === featureId) ?? null
-  const featureCost = feature ? Math.round(400 + feature.followers * 0.018) : 0
-  const cost = producer.cost + 30 + featureCost
+  const partners = s.people.filter((pp) => pp.role === 'artist' && pp.met && pp.affinity >= 20)
+  const feature = partners.find((pp) => pp.id === featureId) ?? null
+  const featureCost = feature ? 300 + feature.tier * 1100 : 0
+  const cost = Math.round((producer.cost + 30) * (1 - s.boons.nextSongDiscount)) + featureCost
   const canWrite = s.money >= cost && s.energy >= 18
 
   const doWrite = () => {
@@ -510,23 +512,25 @@ function WriteSheet({ open, onClose, s }: { open: boolean; onClose: () => void; 
         style={{ fontSize: 13 }}
       >
         <option value="">Solo record</option>
-        {s.rivals
-          .filter((r) => r.beef < 45)
-          .sort((a, b) => b.fame - a.fame)
-          .map((r) => {
-            const fc = Math.round(400 + r.followers * 0.018)
-            return (
-              <option key={r.id} value={r.id} disabled={s.money < fc}>
-                {r.name} — fame {Math.round(r.fame)} — {money(fc)}
-              </option>
-            )
-          })}
+        {partners.map((pp) => {
+          const fc = 300 + pp.tier * 1100
+          return (
+            <option key={pp.id} value={pp.id} disabled={s.money < fc}>
+              {pp.name} — {roleOf(pp.role).name} — {money(fc)}
+            </option>
+          )
+        })}
       </select>
+      {partners.length === 0 && (
+        <div className="tiny muted" style={{ marginTop: 5 }}>
+          Nobody will get on a record with a stranger. Meet artists in the Scene and build something first.
+        </div>
+      )}
 
       <div className="sheet-cta">
         <div className="row between" style={{ marginBottom: 7 }}>
           <span className="tiny muted">
-            Session {money(cost)} · 18 energy
+            Session {money(cost)} · 18 energy · 14 hours
             {feature ? ` · feat. ${feature.name}` : ''}
           </span>
           <span className="tiny" style={{ color: s.energy < 18 ? '#fda4af' : 'var(--dim)' }}>
@@ -550,7 +554,6 @@ function SongSheet({ song, onClose, s }: { song: Song | null; onClose: () => voi
   const g = gradeFor(live.quality)
   const videoCostLyric = 650 + s.followers * 0.004
   const videoCostConcept = 4200 + s.followers * 0.02
-  const playlistCosts = [900, 7000, 60000, 500000]
 
   return (
     <Sheet open={!!song} onClose={onClose}>
@@ -634,30 +637,19 @@ function SongSheet({ song, onClose, s }: { song: Song | null; onClose: () => voi
             {money(videoCostConcept)}
           </Btn>
         </div>
-        {[0, 1, 2, 3].map((tier) => {
-          const names = ['Fresh Finds', 'Genre Pulse', 'Global Rotation', 'Cultural Moment']
-          const done = live.playlistTier >= tier + 1
-          return (
-            <div className="row between" key={tier} style={{ gap: 8, opacity: live.playlistTier > tier ? 0.5 : 1 }}>
-              <div className="grow">
-                <div className="opt-title" style={{ fontSize: 12.5 }}>
-                  📻 {names[tier]}
-                </div>
-                <div className="opt-sub">
-                  {done ? 'Already placed' : 'Multiplies streams while it lasts.'}
-                </div>
-              </div>
-              <Btn
-                sm
-                variant="flat"
-                disabled={done || live.playlistTier !== tier || s.money < playlistCosts[tier]}
-                onClick={() => dispatch({ type: 'BUY_PLAYLIST', songId: live.id, tier })}
-              >
-                {done ? '✓' : money(playlistCosts[tier])}
-              </Btn>
+        <div className="row" style={{ gap: 8, alignItems: 'flex-start' }}>
+          <span style={{ fontSize: 14 }}>🎧</span>
+          <div className="grow">
+            <div className="opt-title" style={{ fontSize: 12.5 }}>
+              Playlist placement
             </div>
-          )
-        })}
+            <div className="opt-sub">
+              {live.playlistTier > 0
+                ? `On ${live.playlistTier} list${live.playlistTier > 1 ? 's' : ''}. Ask a curator for more.`
+                : 'Not for sale. Curators add what they like — find one in the Scene and earn it.'}
+            </div>
+          </div>
+        </div>
       </div>
 
       <Btn block variant="primary" style={{ marginTop: 14 }} onClick={onClose}>

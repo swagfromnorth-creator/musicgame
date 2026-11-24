@@ -1,5 +1,5 @@
 import { RADIO_TIERS, TOURS, money, ui } from '../game/data'
-import { fameOf, incomePerHour, tourPreview } from '../game/engine'
+import { fameOf, incomePerHour, reachOf, tourPreview } from '../game/engine'
 import type { GameState } from '../game/types'
 import { Bar, Btn } from '../components/Shared'
 import { useGame } from '../game/store'
@@ -155,9 +155,9 @@ export function Business({ s }: { s: GameState }) {
       )}
 
       <div className="section-title">
-        <h2>Radio</h2>
+        <h2>Reach</h2>
         <div className="line" />
-        <span className="tiny muted">×{(RADIO_TIERS[s.radioTier]?.mult ?? 1).toFixed(2)} streams</span>
+        <span className="tiny muted">×{reachOf(s).toFixed(2)} streams</span>
       </div>
       <div className="card">
         <div className="row" style={{ gap: 4, marginBottom: 10 }}>
@@ -174,23 +174,31 @@ export function Business({ s }: { s: GameState }) {
             </div>
           ))}
         </div>
-        <div className="row between">
-          <div className="grow">
-            <div style={{ fontWeight: 700, fontSize: 13 }}>{RADIO_TIERS[s.radioTier].name}</div>
-            <div className="tiny muted">
-              {nextRadio
-                ? `Next: ${nextRadio.name} — ×${nextRadio.mult.toFixed(2)} streams`
-                : 'You are the entire dial now.'}
-            </div>
-          </div>
-          {nextRadio && (
-            <Btn sm variant="flat" disabled={s.money < nextRadio.cost} onClick={() => dispatch({ type: 'RADIO_PROMO' })}>
-              {money(nextRadio.cost)}
-            </Btn>
-          )}
+        <div style={{ fontWeight: 700, fontSize: 13 }}>{RADIO_TIERS[s.radioTier].name}</div>
+        <div className="tiny muted" style={{ marginBottom: 10 }}>
+          {nextRadio
+            ? `Next: ${nextRadio.name}. Rotations are not for sale — a programmer has to move you.`
+            : 'You are the entire dial now.'}
         </div>
-        <div className="tiny muted" style={{ marginTop: 8 }}>
-          Current income: <b style={{ color: '#86efac' }}>{money(incomePerHour(s))}</b>/hr
+        <div className="divider" />
+        <div className="row between" style={{ marginBottom: 6 }}>
+          <span className="tiny muted">Press coverage</span>
+          <span className="tiny" style={{ fontWeight: 700 }}>
+            {['nobody has written about you', 'a blog post', 'a local feature', 'a city paper profile', 'a national piece', 'the cover of a magazine'][s.press.level]}
+          </span>
+        </div>
+        <div className="row between" style={{ marginBottom: 6 }}>
+          <span className="tiny muted">Manager</span>
+          <span className="tiny" style={{ fontWeight: 700, color: s.manager ? '#86efac' : 'var(--dim2)' }}>
+            {s.manager ? `${s.manager.name} · ${Math.round(s.manager.cut * 100)}%` : 'none — doors stay shut'}
+          </span>
+        </div>
+        <div className="row between">
+          <span className="tiny muted">Income</span>
+          <span className="tiny" style={{ fontWeight: 700, color: '#86efac' }}>{money(incomePerHour(s))}/hr</span>
+        </div>
+        <div className="tiny muted" style={{ marginTop: 9, lineHeight: 1.5 }}>
+          Everyone who can make a record travel is standing in a room somewhere. Ask them in the Scene.
         </div>
       </div>
 

@@ -10,15 +10,31 @@ import {
   ACTIVITIES,
   ASSETS,
   PRODUCERS,
-  RADIO_TIERS,
   SKILL_INFO,
   TOURS,
+  money,
   pick,
   randomName,
+  ui,
 } from './data'
+import {
+  REPLIES,
+  ROOMS,
+  createPeople,
+  canAskFavor,
+  isRoomOpen,
+  npcLine,
+  peopleInRoom,
+  replyModifiers,
+  replyOdds,
+  roleOf,
+  roomOf,
+} from '../game/people'
+import type { Person, TopicId } from './types'
 import {
   WEEK_HOURS,
   activityFollowersGain,
+  activityPay,
   advance,
   clamp,
   computeCharts,
@@ -30,6 +46,8 @@ import {
   tourPreview,
   uid,
   weekOf,
+  yearOf,
+  reachConvOf,
   writeQuality,
   initialState,
   rand,
@@ -46,6 +64,13 @@ const OFFLINE_RATE = 1.0
 const FALLBACK_SINGLES = ['Afterglow', 'No Signal', 'Golden Hour', 'Bad Weather', 'Static Love', 'Rooftop', 'Slow Burn', 'Wildfire']
 
 export function migrate(s: GameState): GameState {
+  s.people = s.people && s.people.length ? s.people : createPeople(s.hour ?? 0)
+  s.room = s.room ?? null
+  s.dialogue = null
+  s.beat = null
+  s.boons = s.boons ?? { nextSongQuality: 0, nextSongDiscount: 0, videoDiscount: 0, studioVisitId: null }
+  s.manager = s.manager ?? null
+  s.press = s.press ?? { level: 0, lastPieceWeek: 0 }
   s.videos = s.videos ?? []
   s.assets = s.assets ?? []
   s.offers = s.offers ?? []
@@ -113,6 +138,12 @@ function neg(s: GameState, n: number) {
   s.energy = clamp(s.energy - n, 0, s.maxEnergy)
 }
 
+/** Audience-scaled effects saturate: 10k real fans are worth more than 10k
+ *  numbers, but a million followers must not multiply every action by a million. */
+function sat(followers: number): number {
+  return (followers * 22000) / (followers + 22000)
+}
+
 function addLog(s: GameState, text: string, kind: 'good' | 'bad' | 'neutral' | 'money' | 'music' = 'neutral') {
   s.log.unshift(makeLog(text, kind, s.hour))
   if (s.log.length > 70) s.log.length = 70
@@ -135,7 +166,7 @@ function releaseSong(s: GameState, song: Song, viaAlbum: string | null) {
   song.releaseHour = s.hour
   song.releaseWeek = s.week
   song.albumId = viaAlbum
-  const burst = (song.quality / 100) ** 2 * s.followers * 0.45 + song.quality * 12
+  const burst = (song.quality / 100) ** 2 * sat(s.followers) * 0.2 * Math.min(1.6, Math.max(0.3, reachConvOf(s) * 0.3)) + song.quality * 1.2
   song.streams += burst
   song.streamsThisWeek += burst
   song.hype = clamp(song.hype + 8 + song.quality * 0.22 + (song.isDiss ? 26 : 0) + (song.featureId ? 10 : 0), 0, 100)
@@ -143,7 +174,7 @@ function releaseSong(s: GameState, song: Song, viaAlbum: string | null) {
   s.charts = computeCharts(s)
 }
 
-function reducer(state: GameState | null, action: Action): GameState | null {
+export function reducer(state: GameState | null, action: Action): GameState | null {
   switch (action.type) {
     case 'HYDRATE':
       return action.state
@@ -203,14 +234,17 @@ function reducer(state: GameState | null, action: Action): GameState | null {
       if (!def) return state
       if (def.cost > 0 && s.money < def.cost) return state
       if (def.energy < 0 && s.energy < -def.energy) return state
+      const cd = def.cooldown ?? 0
+      if (cd > 0 && s.hour < (s.cooldowns?.[def.id] ?? -999) + cd) return state
       s.money = Math.max(0, s.money - def.cost)
       s.energy = clamp(s.energy + def.energy, 0, s.maxEnergy)
+      if (cd > 0) s.cooldowns[def.id] = s.hour
       if (def.skill && def.xp) {
         const gain = (def.xp / 100) * clamp(2.1 - s.skills[def.skill] / 62, 0.15, 2.1) * rand(0.8, 1.25)
         s.skills[def.skill] = clamp(s.skills[def.skill] + gain, 0, 100)
       }
       if (def.money) {
-        const pay = Math.round(def.money * (1 + fameOf(s) / 18))
+        const pay = activityPay(s, def.id)
         s.money += pay
         addLog(s, `🎪 Played a show, took home ${pay.toLocaleString('en-US')} dollars.`, 'money')
       }
@@ -229,11 +263,16 @@ function reducer(state: GameState | null, action: Action): GameState | null {
     case 'WRITE_SONG': {
       const p = action.payload
       const prod = PRODUCERS.find((x) => x.id === p.producerId) ?? PRODUCERS[0]
-      const cost = prod.cost + 30
+      const feature = p.featureId ? s.people.find((x) => x.id === p.featureId) : null
+      if (p.featureId && (!feature || !feature.met || feature.affinity < 20)) return state
+      const featureCost = feature ? 300 + feature.tier * 1100 : 0
+      const cost = Math.round((prod.cost + 30) * (1 - s.boons.nextSongDiscount)) + featureCost
       if (s.money < cost || s.energy < 18) return state
       s.money -= cost
       neg(s, 18)
-      const quality = writeQuality(s, { genre: p.genre, style: p.style, producerId: p.producerId, title: p.title })
+      let quality = writeQuality(s, { genre: p.genre, style: p.style, producerId: p.producerId, title: p.title })
+      quality = clamp(quality + s.boons.nextSongQuality + (feature ? feature.tier * 2.5 : 0), 3, 100)
+      quality = Math.round(quality)
       s.pending = {
         title: p.title,
         genre: p.genre,
@@ -246,8 +285,24 @@ function reducer(state: GameState | null, action: Action): GameState | null {
         isDiss: false,
         targetRivalId: null,
       }
+      if (s.boons.nextSongQuality > 0 || s.boons.nextSongDiscount > 0) {
+        addLog(
+          s,
+          `✨ The room was better than you paid for (${s.boons.nextSongQuality > 0 ? `+${Math.round(s.boons.nextSongQuality)} quality` : 'discount applied'}).`,
+          'good',
+        )
+      }
+      if (feature) {
+        s.followers += 120 + sat(s.followers) * 0.006 * feature.tier
+        feature.affinity = clamp(feature.affinity - 3, -100, 100)
+        feature.lastSeenHour = s.hour
+      }
+      s.boons.nextSongQuality = 0
+      s.boons.nextSongDiscount = 0
       s.skills.songwriting = clamp(s.skills.songwriting + 0.16, 0, 100)
       s.hype = clamp(s.hype + 1, 0, 100)
+      // Writing and cutting a record is a night in the studio, not a click.
+      Object.assign(s, advance(s, 14))
       break
     }
 
@@ -402,11 +457,11 @@ function reducer(state: GameState | null, action: Action): GameState | null {
           t.releaseWeek = s.week
         }
       }
-      const burst = (album.quality / 100) ** 2 * s.followers * 1.2 + album.quality * 40
+      const burst = (album.quality / 100) ** 2 * sat(s.followers) * 0.42 + album.quality * 40
       album.streams += burst
       album.streamsThisWeek += burst
       s.hype = clamp(s.hype + 14, 0, 100)
-      s.followers += s.followers * 0.02
+      s.followers += sat(s.followers) * 0.02
       s.charts = computeCharts(s)
       addLog(s, `💿 "${album.title}" is out — ${album.songIds.length} tracks.`, 'music')
       if (s.label) {
@@ -482,16 +537,6 @@ function reducer(state: GameState | null, action: Action): GameState | null {
       break
     }
 
-    case 'RADIO_PROMO': {
-      if (s.radioTier >= RADIO_TIERS.length - 1) return state
-      const next = RADIO_TIERS[s.radioTier + 1]
-      if (s.money < next.cost) return state
-      s.money -= next.cost
-      s.radioTier += 1
-      addLog(s, `📡 You buy into ${next.name}. Streaming multiplier up.`, 'money')
-      break
-    }
-
     case 'SOCIAL': {
       const r = s.rivals.find((x) => x.id === action.rivalId)
       if (!r) return state
@@ -513,7 +558,7 @@ function reducer(state: GameState | null, action: Action): GameState | null {
         if (r.beef > 45) return state
         neg(s, 14)
         r.beef = clamp(r.beef - 10, -100, 100)
-        const gain = 40 + r.followers * 0.006 * (1 + s.skills.charisma / 80)
+        const gain = 40 + sat(r.followers) * 0.02 * (1 + s.skills.charisma / 80)
         s.followers += gain
         s.hype = clamp(s.hype + 10, 0, 100)
         s.skills.charisma = clamp(s.skills.charisma + 0.4, 0, 100)
@@ -572,6 +617,280 @@ function reducer(state: GameState | null, action: Action): GameState | null {
       break
     }
 
+
+    // ---------------- the scene ----------------
+    case 'ENTER_ROOM': {
+      const def = roomOf(action.room)
+      if (!isRoomOpen(def, s.hour)) return state
+      if (fameOf(s) < def.gateFame) return state
+      if (s.money < def.cover) return state
+      if (s.energy < def.energy) return state
+      s.money -= def.cover
+      neg(s, def.energy)
+      s.room = def.id
+      s.roomEnteredHour = s.hour
+      s.dialogue = null
+      s.beat = null
+      const who = peopleInRoom(s.people, def.id, s.hour, s.week)
+      addLog(
+        s,
+        `${def.emoji} You walk into ${def.name}. ${who.length ? who.map((p) => p.name.split(' ')[0]).join(', ') + ' are here.' : 'It is dead in here.'}`,
+        'neutral',
+      )
+      break
+    }
+
+    case 'LEAVE_ROOM':
+      s.room = null
+      s.dialogue = null
+      s.beat = null
+      break
+
+    case 'TALK': {
+      if (!s.room) return state
+      const p = s.people.find((x) => x.id === action.personId)
+      if (!p) return state
+      if (!peopleInRoom(s.people, s.room, s.hour, s.week).some((x) => x.id === p.id)) return state
+      if (p.affinity < -45) return state
+      s.dialogue = { personId: p.id, topic: action.topic, line: npcLine(p, action.topic), hour: s.hour }
+      s.beat = null
+      if (!p.met) {
+        p.met = true
+        addLog(s, `🤝 You introduce yourself to ${p.name}, ${roleOf(p.role).name.toLowerCase()} at ${roomOf(p.room).name}.`, 'neutral')
+      }
+      p.lastSeenHour = s.hour
+      break
+    }
+
+    case 'REPLY': {
+      if (!s.dialogue) return state
+      const p = s.people.find((x) => x.id === s.dialogue!.personId)
+      if (!p) return state
+      const topic = s.dialogue.topic
+      const reply = REPLIES[topic].find((r) => r.id === action.replyId)
+      if (!reply) return state
+      if (s.energy < reply.energy) return state
+      neg(s, reply.energy)
+
+      const { affMul, respMul, trustMul } = replyModifiers(p, topic, reply)
+      const skill = (s.skills.charisma + s.skills.performance) / 2
+      const success = Math.random() < replyOdds(p, topic, reply, skill)
+      const k = success ? 1 : 0.22
+      const aff = success ? reply.aff * affMul : -1.6 + reply.aff * 0.12
+      const resp = success ? reply.resp * respMul : -0.8 + reply.resp * 0.12
+      const trust = success ? reply.trust * trustMul : reply.trust * 0.2
+
+      p.affinity = clamp(p.affinity + aff, -100, 100)
+      p.respect = clamp(p.respect + resp, 0, 100)
+      p.trust = clamp(p.trust + trust, 0, 100)
+      p.patience = clamp(p.patience - 0.5, 0, 100)
+      p.lastSeenHour = s.hour
+      s.energy = clamp(s.energy + (success ? 0 : -1), 0, s.maxEnergy)
+
+      if (topic === 'scene' && success && p.traits.includes('gossip')) {
+        s.skills.charisma = clamp(s.skills.charisma + 0.15, 0, 100)
+      }
+      if (topic === 'flirt' && success && p.traits.includes('flirt') && p.affinity > 60 && p.trust > 40) {
+        if (!s.milestones.includes('romance:' + p.id)) {
+          s.milestones.push('romance:' + p.id)
+          addLog(s, `❤️ Something is going on with ${p.name}. It is going to complicate everything.`, 'good')
+        }
+      }
+      if (p.affinity < -30 && Math.random() < 0.3) {
+        addLog(s, `${p.name} has started telling people about you. Not kindly.`, 'bad')
+        s.controversy = clamp(s.controversy + 4, 0, 100)
+      }
+
+      s.beat = {
+        personId: p.id,
+        topic,
+        replyId: reply.id,
+        success,
+        text: success ? reply.win : reply.lose,
+        aff: Math.round(aff),
+        resp: Math.round(resp),
+        trust: Math.round(trust),
+        hour: s.hour,
+      }
+      s.dialogue = null
+      break
+    }
+
+    case 'CLOSE_BEAT':
+      s.beat = null
+      break
+
+    case 'BUY_ROUND': {
+      const p = s.people.find((x) => x.id === action.personId)
+      if (!p || !s.room) return state
+      const price = Math.round(30 + (ROOMS.find((r) => r.id === s.room)?.cover ?? 0) * 0.4 + p.tier * 12)
+      if (s.money < price || s.energy < 2) return state
+      s.money -= price
+      neg(s, 2)
+      const gain = 5 + p.tier * 0.6 + (p.traits.includes('greedy') ? 2 : 0)
+      p.affinity = clamp(p.affinity + gain, -100, 100)
+      p.patience = clamp(p.patience + 9, 0, 100)
+      p.lastSeenHour = s.hour
+      addLog(s, `🍸 You get ${p.name} a drink. ${Math.round(price)} dollars well spent, probably.`, 'money')
+      break
+    }
+
+    case 'HELP_OUT': {
+      const p = s.people.find((x) => x.id === action.personId)
+      if (!p) return state
+      const cost = Math.round(120 + p.tier * 90)
+      if (s.money < cost || s.energy < 10) return state
+      s.money -= cost
+      neg(s, 10)
+      p.affinity = clamp(p.affinity + 9, -100, 100)
+      p.trust = clamp(p.trust + 11, 0, 100)
+      p.respect = clamp(p.respect + 4, 0, 100)
+      p.patience = clamp(p.patience + 34, 0, 100)
+      p.lastSeenHour = s.hour
+      addLog(s, `🤲 You spend the day sorting out ${p.name}'s problem. It costs you ${cost} dollars and most of your afternoon.`, 'good')
+      break
+    }
+
+    case 'BURN_BRIDGE': {
+      const p = s.people.find((x) => x.id === action.personId)
+      if (!p) return state
+      p.affinity = -100
+      p.trust = 0
+      p.respect = clamp(p.respect - 25, 0, 100)
+      p.grudge = 100
+      p.patience = 0
+      s.controversy = clamp(s.controversy + 12, 0, 100)
+      s.hype = clamp(s.hype + 5, 0, 100)
+      s.dialogue = null
+      s.beat = null
+      addLog(s, `💥 You tell ${p.name} exactly what you think of them, in front of the room. That door is closed.`, 'bad')
+      break
+    }
+
+    case 'FAVOR': {
+      const p = s.people.find((x) => x.id === action.personId)
+      if (!p) return state
+      if (s.energy < 4) return state
+      const gate = canAskFavor(p)
+      if (!gate.ok) {
+        p.patience = clamp(p.patience - 10, 0, 100)
+        addLog(s, `🚫 ${p.name} shuts it down before you finish the sentence. (${gate.reason})`, 'bad')
+        return s
+      }
+      neg(s, 4)
+      p.favors += 1
+      p.favorsThisWeek += 1
+      p.patience = clamp(p.patience - 30 - p.tier * 2, 0, 100)
+      p.affinity = clamp(p.affinity - (4 + p.tier), -100, 100)
+      p.lastSeenHour = s.hour
+      const tier = p.tier
+      switch (p.role) {
+        case 'producer': {
+          s.boons.nextSongQuality += 5 + tier * 3
+          s.boons.nextSongDiscount = Math.max(s.boons.nextSongDiscount, 0.5)
+          addLog(s, `🎛️ ${p.name} clears a room for you on Thursday. Half the usual rate, twice the sound.`, 'good')
+          break
+        }
+        case 'songwriter': {
+          s.boons.nextSongQuality += 7 + tier * 2
+          addLog(s, `✍️ ${p.name} slides you a hook they could not place. "Do not embarrass me with it."`, 'good')
+          break
+        }
+        case 'dj': {
+          const ceiling = Math.min(5, p.tier)
+          if (s.radioTier < ceiling) {
+            s.radioTier += 1
+            addLog(s, `📡 ${p.name} moves you up a rotation tier. The difference is immediate and terrifying.`, 'good')
+          } else {
+            s.boons.nextSongQuality += 3
+            addLog(s, `📡 ${p.name} says their slot cannot carry you any further than this.`, 'neutral')
+          }
+          break
+        }
+        case 'curator': {
+          const best = [...s.songs]
+            .filter((x) => x.released && x.playlistTier < Math.min(4, p.tier))
+            .sort((a, b) => b.streamsLastHour - a.streamsLastHour)[0]
+          if (best) {
+            best.playlistTier = Math.min(4, best.playlistTier + 1)
+            best.hype = clamp(best.hype + 20, 0, 100)
+            addLog(s, `🎧 ${p.name} adds "${best.title}" to a list with actual listeners on it.`, 'good')
+          } else {
+            s.hype = clamp(s.hype + 6, 0, 100)
+            addLog(s, `🎧 ${p.name} says they will listen when you have something worth adding.`, 'neutral')
+          }
+          break
+        }
+        case 'journalist': {
+          if (s.press.level >= p.tier) {
+            s.hype = clamp(s.hype + 5, 0, 100)
+            addLog(s, `📰 ${p.name} says they have already written you up as far as their desk allows.`, 'neutral')
+            break
+          }
+          s.press.level = Math.min(5, s.press.level + 1)
+          const gain = Math.round(180 + sat(s.followers) * 0.2 + fameOf(s) * 60)
+          s.followers += gain
+          s.press.lastPieceWeek = s.week
+          addLog(s, `📰 ${p.name} files a piece on you. +${ui(gain)} followers, and the search traffic is real.`, 'good')
+          break
+        }
+        case 'ar': {
+          if (p.tier < 3 && fameOf(s) < 18) {
+            s.hype = clamp(s.hype + 5, 0, 100)
+            addLog(s, `💼 ${p.name} likes you but cannot get a deal past their own desk.`, 'neutral')
+            break
+          }
+          const existing = s.offers.length
+          maybeOffers(s)
+          if (s.offers.length > existing) {
+            addLog(s, `💼 ${p.name} walks your file into the room where offers get made.`, 'money')
+          } else {
+            s.hype = clamp(s.hype + 8, 0, 100)
+            addLog(s, `💼 ${p.name} says the timing is wrong but keeps the file open.`, 'neutral')
+          }
+          break
+        }
+        case 'promoter': {
+          const pay = Math.round(700 + sat(s.followers) * 1.6 + fameOf(s) * 60)
+          const fans = Math.round(50 + fameOf(s) * 12)
+          s.money += pay
+          s.followers += fans
+          s.hype = clamp(s.hype + 6, 0, 100)
+          addLog(s, `🎪 ${p.name} puts you on the bill tonight. +${money(pay)} and ${ui(fans)} new faces.`, 'money')
+          break
+        }
+        case 'manager': {
+          if (s.manager) {
+            addLog(s, `📱 ${p.name} says you already have a manager and asks who it is. It gets awkward.`, 'neutral')
+            break
+          }
+          s.manager = { personId: p.id, name: p.name, cut: 0.12 }
+          addLog(s, `📱 ${p.name} takes you on. Twelve percent of everything, and doors you could not knock on.`, 'money')
+          break
+        }
+        case 'artist': {
+          const gain = Math.round(260 + sat(s.followers) * 0.24 + p.tier * 40)
+          s.followers += gain
+          s.boons.nextSongQuality += 4 + tier
+          if (p.rivalId) {
+            const r = s.rivals.find((x) => x.id === p.rivalId)
+            if (r) r.beef = clamp(r.beef - 8, -100, 100)
+          }
+          addLog(s, `🎤 ${p.name} posts about your record to their own audience. +${ui(gain)} followers.`, 'good')
+          break
+        }
+        case 'director': {
+          s.boons.videoDiscount = 0.5
+          addLog(s, `🎬 ${p.name} agrees to shoot your next video at cost. "Because the song is good. Do not make me regret it."`, 'good')
+          break
+        }
+      }
+      if (p.patience <= 0) {
+        addLog(s, `😐 ${p.name} is done doing you favours for a while.`, 'bad')
+      }
+      break
+    }
+
     case 'BOOK_TOUR': {
       const def = TOURS[action.tier]
       if (!def) return state
@@ -591,9 +910,6 @@ function reducer(state: GameState | null, action: Action): GameState | null {
       const next = advance(s, 8)
       next.energy = next.maxEnergy
       next.health = clamp(next.health + 3, 0, 100)
-      next.hour += 8
-      const w = weekOf(next.hour)
-      if (w !== next.week) next.charts = computeCharts(next)
       return next
     }
 

@@ -23,6 +23,81 @@ export type GenreId =
   | 'metal'
   | 'jazz'
 
+export type RoleId =
+  | 'producer'
+  | 'songwriter'
+  | 'dj'
+  | 'curator'
+  | 'journalist'
+  | 'ar'
+  | 'promoter'
+  | 'manager'
+  | 'artist'
+  | 'director'
+
+export type RoomId =
+  | 'studio8'
+  | 'blue'
+  | 'radio'
+  | 'paper'
+  | 'roxy'
+  | 'labelrow'
+  | 'after'
+
+export type TraitId = 'snob' | 'gossip' | 'flirt' | 'ruthless' | 'loyal' | 'volatile' | 'greedy'
+
+export type TopicId = 'small' | 'work' | 'scene' | 'personal' | 'flirt' | 'pitch'
+
+export interface Person {
+  id: string
+  name: string
+  role: RoleId
+  title: string
+  tier: number
+  affinity: number
+  respect: number
+  trust: number
+  patience: number
+  traits: TraitId[]
+  room: RoomId
+  hours: [number, number]
+  met: boolean
+  lastSeenHour: number
+  favors: number
+  favorsThisWeek: number
+  hue: number
+  blurb: string
+  hook: string
+  rivalId: string | null
+  grudge: number
+}
+
+export interface Dialogue {
+  personId: string
+  topic: TopicId
+  line: string
+  hour: number
+}
+
+export interface Beat {
+  personId: string
+  topic: TopicId
+  replyId: string
+  success: boolean
+  text: string
+  aff: number
+  resp: number
+  trust: number
+  hour: number
+}
+
+export interface Boons {
+  nextSongQuality: number
+  nextSongDiscount: number
+  videoDiscount: number
+  studioVisitId: string | null
+}
+
 export type MoodId = 'anthem' | 'heartbreak' | 'club' | 'introspective' | 'rebel'
 
 export type StyleId = 'hooky' | 'deep' | 'vibe'
@@ -225,6 +300,14 @@ export interface GameState {
   songs: Song[]
   albums: Album[]
   rivals: Rival[]
+  people: Person[]
+  room: RoomId | null
+  roomEnteredHour: number
+  dialogue: Dialogue | null
+  beat: Beat | null
+  boons: Boons
+  manager: { personId: string; name: string; cut: number } | null
+  press: { level: number; lastPieceWeek: number }
   offers: LabelOffer[]
   label: SignedDeal | null
   charts: Charts
@@ -240,6 +323,8 @@ export interface GameState {
   radioTier: number
   playlistPush: number
   promoSpend: number
+  /** hour of last use, keyed by activity id */
+  cooldowns: Record<string, number>
   featuresBought: string[]
 
   // meta
@@ -293,8 +378,16 @@ export type Action =
   | { type: 'BUY_MASTERS' }
   | { type: 'BUY_ASSET'; assetId: string }
   | { type: 'UPGRADE_STUDIO' }
-  | { type: 'RADIO_PROMO' }
   | { type: 'SOCIAL'; rivalId: string; kind: 'compliment' | 'collab' | 'diss' | 'subtweet' }
+  | { type: 'ENTER_ROOM'; room: RoomId }
+  | { type: 'LEAVE_ROOM' }
+  | { type: 'TALK'; personId: string; topic: TopicId }
+  | { type: 'REPLY'; replyId: string }
+  | { type: 'CLOSE_BEAT' }
+  | { type: 'FAVOR'; personId: string }
+  | { type: 'BUY_ROUND'; personId: string }
+  | { type: 'HELP_OUT'; personId: string }
+  | { type: 'BURN_BRIDGE'; personId: string }
   | { type: 'BOOK_TOUR'; tier: number }
   | { type: 'REST' }
   | { type: 'RETIRE' }

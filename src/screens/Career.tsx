@@ -1,5 +1,5 @@
 import { ACTIVITIES, SKILL_INFO, money, ui } from '../game/data'
-import { activityFollowersGain, fameOf, skillUpCost } from '../game/engine'
+import { activityCooldownLeft, activityFollowersGain, activityPay, fameOf, skillUpCost } from '../game/engine'
 import type { GameState, SkillKey } from '../game/types'
 import { Bar, Btn } from '../components/Shared'
 import { useGame } from '../game/store'
@@ -99,10 +99,12 @@ export function Career({ s }: { s: GameState }) {
         {ACTIVITIES.map((a) => {
           const locked = a.minFame !== undefined && fame < a.minFame
           const fg = activityFollowersGain(s, a.id)
-          const disabled = locked || s.money < a.cost || (a.energy < 0 && s.energy < -a.energy)
+          const cdLeft = activityCooldownLeft(s, a)
+          const disabled = locked || cdLeft > 0 || s.money < a.cost || (a.energy < 0 && s.energy < -a.energy)
           const parts: string[] = []
+          if (cdLeft > 0) parts.push(`ready in ${Math.ceil(cdLeft)}h`)
           if (fg > 0) parts.push(`+${ui(fg)} followers`)
-          if (a.money) parts.push(`~${money(a.money * (1 + fame / 18))}`)
+          if (a.money) parts.push(`~${money(activityPay(s, a.id))}`)
           if (a.skill && a.xp) parts.push(`+${SKILL_INFO[a.skill].name.toLowerCase()}`)
           if (a.hype) parts.push(`+${a.hype} hype`)
           if (a.health) parts.push(`${a.health > 0 ? '+' : ''}${a.health} health`)

@@ -11,6 +11,7 @@ import {
 import type { GameState } from '../game/types'
 import { Art, Bar, PortraitArt, Sparkline, Stat } from '../components/Shared'
 import { useGame } from '../game/store'
+import { canAskFavor } from '../game/people'
 
 export function Home({ s, go }: { s: GameState; go: (tab: string) => void }) {
   const fame = fameOf(s)
@@ -298,6 +299,24 @@ function NextMoves({ s, go }: { s: GameState; go: (tab: string) => void }) {
       sub: 'Rest or skip a day. Tired artists write bad songs.',
       tab: 'career',
       cta: 'Recover',
+    })
+  }
+  if (s.people.filter((p) => p.met).length < 3) {
+    moves.push({
+      icon: '🍸',
+      title: 'You know nobody in this city',
+      sub: 'Nothing moves without people. Get into a room and start talking.',
+      tab: 'scene',
+      cta: 'Go out',
+    })
+  }
+  if (s.people.some((p) => p.met && p.affinity > 35 && p.patience > 40) && s.people.every((p) => !canAskFavor(p).ok)) {
+    moves.push({
+      icon: '🤝',
+      title: 'Somebody likes you enough to be useful',
+      sub: 'Check what they can do. A favour now is worth more than another single.',
+      tab: 'scene',
+      cta: 'Call it in',
     })
   }
   if (s.money < 700 && !s.tour && s.songs.filter((x) => x.released).length < 8) {
