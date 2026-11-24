@@ -4,3 +4,4 @@ dist
 .tmptest
 .DS_Store
 *.local
+*.tsbuildinfo
