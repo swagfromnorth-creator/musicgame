@@ -1,78 +1,55 @@
 # STARMAKER
 
-A music-industry life & idle simulator for the browser. You start with $750, a bedroom, and 32
-followers — and try to end up with a catalog, a label, a cabinet of awards, and an island.
+A music-industry sim. Write songs, work a day job to fund it, gig to build a
+crowd, and hope a record travels.
 
-It's a mash-up of the three games that defined the genre:
+**v1 — early.** No avatars, no story, no bloat. Just the loop.
 
-| Reference | What it contributes |
-| --- | --- |
-| **Music Star Idle Life Simulator** | Idle/offline streaming income, energy, weekly charts, label negotiation, awards, fortune-spending |
-| **Music Star – Life Simulator** | Skill training, one-session songwriting, music videos, albums, health/age, legacy |
-| **Music Wars Rockstar** | Rival artists, beef meters, diss tracks, collabs, features, social following |
-
-## Three ways to play
-
-**1. Just open it (no install).** `starmaker.html` is a single self-contained file — the entire game,
-engine, styles and all, with no server and no network calls. Double-click it, or drag it into any
-browser. Regenerate it any time with `npm run single`.
-
-**2. Development server.**
+## Play
 
 ```bash
 npm install
-npm run dev       # http://localhost:5173, hot reload
-npm run build     # type-check + production bundle in dist/
-npm run single    # build, then pack dist/ into starmaker.html
-npm run smoke     # headless render test of every screen (jsdom)
+npm run dev      # → http://localhost:5173
 ```
 
-**3. Static host.** `npm run build` and drop `dist/` on Netlify, Vercel, GitHub Pages, any static
-host. (If you host it under a sub-path, set `base: './'` in `vite.config.ts` first.)
+Or build the single file and double-click it:
 
-Saves use `localStorage`. If your browser blocks storage for `file://` pages, the game still runs —
-use **Life → Save data → Export** to keep a career as a file, and import it back later.
-
-Progress saves to `localStorage` every few seconds. Closing the tab does not stop the world —
-streams, royalties, fans and tours keep running while you're gone (capped at ~12 game weeks,
-and only the *calendar* slows, so deadlines never slip past you).
+```bash
+npm run single   # → starmaker.html (no server needed)
+```
 
 ## The loop
 
-1. **Write & record** in the Studio. Quality is rolled from your five skills, the producer you
-   hire, your studio tier, genre fit, health, and a little luck.
-2. **Release**. Singles chart individually; albums gather tracks and keep streaming for months.
-3. **Grow**. Streams convert into followers, followers into fame, fame into tours, deals and awards.
-4. **Spend**. Studio gear, producers, playlist placement, radio rotation, features, cars, jets.
-5. **Retire** and pass the name to the next generation for a legacy head start.
+| Tab | What you do |
+| --- | --- |
+| **Studio** | Press write. A session runs on a timer (1:30 at the start, faster as Songwriting rises) and the finished song drops into the vault by itself. |
+| **Vault** | Rename anything unreleased. Release singles, or pick any number of songs — one is a single, five is an album. Albums refresh the lifespan of everything on them and carry their own reach figure. |
+| **Work** | Jobs pay the bills. Three listings at a time, re-rolled every 80 seconds, one shift running at once, 8–30 seconds a shift. Gigs pay, bring fans, and double your streaming for two minutes. |
+| **Biz** | Buy a better studio (raises the floor on every song), run promotion (five minutes of 2× reach), watch the numbers. |
 
-## Systems
+## Numbers
 
-- **Time** — 1 real second ≈ 1 game hour, ×1/×2/×4, pausable. Weeks roll over on Sunday and the
-  Hot 100 / Albums / Artists charts are re-cut from that week's streams.
-- **Energy** — every meaningful action costs it; it regenerates 3.1/hour. Sleep resets it.
-- **Skills** — songwriting, vocals, performance, production, charisma. Returns diminish, so the
-  last 20 points of any skill are the expensive ones.
-- **Hype & exposure** — hype multiplies every stream a song earns and decays constantly. Run
-  exposure too hot and a scandal hits.
-- **Churn** — big audiences leak. Holding 10M followers requires a live catalog and momentum;
-  the churn term scales as `followers^1.45`.
-- **Rivals** — twelve artists with their own fame curve that rubber-bands toward yours, so the
-  charts stay competitive. Compliment, collab, subtweet or drop a diss track.
-- **Labels** — advance vs. royalty vs. album commitment. Push terms, walk away, or sign and buy
-  your masters back later.
-- **Awards** — a ceremony every 13 weeks. Mostly you lose to a famous name.
+Four things matter: **cash, fans, streams, reach**.
 
-## Code map
+- **Songwriting** — how fast you write, and how good the songs land.
+- **Virality** — how *wide* your records go and how *long* they last. The headline
+  "reach / life" figure is your catalogue's average reach and, next to it, the
+  hours each record keeps earning.
+- **Fans** come from streams, and streams come from reach. Without reach a good
+  song just sits there.
+- Songs decay: `exp(-age / lifespan)`. An album restarts that clock.
 
-```
-src/game/types.ts    all state shapes
-src/game/data.ts     genres, producers, assets, tours, labels, name generators
-src/game/engine.ts   pure simulation: streams, churn, charts, awards, ticking
-src/game/store.tsx   reducer (all player actions), save/load, clock
-src/screens/*        one file per tab
-src/components/      shared UI: album art, portrait SVG, sheets, bars
+## Dev
+
+```bash
+npx tsc --noEmit                     # types
+npm run smoke                        # mounts the real app in jsdom, clicks through
+npx esbuild scripts/sim.ts --bundle --platform=node --format=esm \
+  --outfile=.cache/test/sim.mjs && node .cache/test/sim.mjs   # pacing curve
 ```
 
-The engine is pure and framework-free — `advance(state, hours)` returns a new state. That's what
-makes offline catch-up, the balance simulations in `scripts/`, and the headless smoke test possible.
+Timers are wall-clock (`Date.now()`), so closing the tab does not freeze the
+world and progress resumes on reopen. Everything lives in `localStorage`
+under `starmaker.v1.save`.
+
+Balance knobs sit at the top of `src/game/data.ts`.

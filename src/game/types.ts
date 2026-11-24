@@ -1,412 +1,125 @@
 // ---------------------------------------------------------------------------
-// STARMAKER — core type definitions
+// STARMAKER v1 — core types
+//
+// Everything that matters is measured in four numbers: cash, fans, streams and
+// reach. Skills bend those numbers; timers decide when you get to touch them.
 // ---------------------------------------------------------------------------
 
-export type SkillKey =
-  | 'songwriting'
-  | 'vocals'
-  | 'performance'
-  | 'production'
-  | 'charisma'
-
-export type Skills = Record<SkillKey, number>
-
-export type GenreId =
-  | 'pop'
-  | 'hiphop'
-  | 'rnb'
-  | 'rock'
-  | 'country'
-  | 'edm'
-  | 'latin'
-  | 'kpop'
-  | 'metal'
-  | 'jazz'
-
-export type RoleId =
-  | 'producer'
-  | 'songwriter'
-  | 'dj'
-  | 'curator'
-  | 'journalist'
-  | 'ar'
-  | 'promoter'
-  | 'manager'
-  | 'artist'
-  | 'director'
-
-export type RoomId =
-  | 'studio8'
-  | 'blue'
-  | 'radio'
-  | 'paper'
-  | 'roxy'
-  | 'labelrow'
-  | 'after'
-
-export type TraitId = 'snob' | 'gossip' | 'flirt' | 'ruthless' | 'loyal' | 'volatile' | 'greedy'
-
-export type TopicId = 'small' | 'work' | 'scene' | 'personal' | 'flirt' | 'pitch'
-
-export interface Person {
-  id: string
-  name: string
-  role: RoleId
-  title: string
-  tier: number
-  affinity: number
-  respect: number
-  trust: number
-  patience: number
-  traits: TraitId[]
-  room: RoomId
-  hours: [number, number]
-  met: boolean
-  lastSeenHour: number
-  favors: number
-  favorsThisWeek: number
-  hue: number
-  blurb: string
-  hook: string
-  rivalId: string | null
-  grudge: number
-}
-
-export interface Dialogue {
-  personId: string
-  topic: TopicId
-  line: string
-  hour: number
-}
-
-export interface Beat {
-  personId: string
-  topic: TopicId
-  replyId: string
-  success: boolean
-  text: string
-  aff: number
-  resp: number
-  trust: number
-  hour: number
-}
-
-export interface Boons {
-  nextSongQuality: number
-  nextSongDiscount: number
-  videoDiscount: number
-  studioVisitId: string | null
-}
-
-export type MoodId = 'anthem' | 'heartbreak' | 'club' | 'introspective' | 'rebel'
-
-export type StyleId = 'hooky' | 'deep' | 'vibe'
+export type SongId = string
+export type AlbumId = string
 
 export interface Song {
-  id: string
+  id: SongId
   title: string
-  genre: GenreId
-  mood: MoodId
-  style: StyleId
-  quality: number // 1..100
-  /** release state */
-  released: boolean
-  releaseHour: number | null
-  releaseWeek: number | null
-  albumId: string | null
-  isDiss: boolean
-  targetRivalId: string | null
-  /** performance */
+  /** 1..100, shown to the player as a plain number */
+  quality: number
+  createdAt: number
+  /** null while it sits in the vault */
+  releasedAt: number | null
+  /** when the decay clock started — reset by an album */
+  lifeAnchor: number | null
+  /** how far this record travels, fixed at release */
+  reach: number
+  /** how long it keeps travelling, in hours */
+  lifespanH: number
   streams: number
-  streamsThisWeek: number
-  streamsLastHour: number
-  hype: number
-  peak: number
-  video: 'none' | 'lyric' | 'concept'
-  playlistTier: number
-  /** song is 'spent' — faded out */
-  dead: boolean
-  /** flavour */
-  hue: number
-  producer: string
-  writeCost: number
-  /** feature artist */
-  featureId: string | null
+  albumId: AlbumId | null
 }
 
 export interface Album {
+  id: AlbumId
+  title: string
+  songIds: SongId[]
+  /** the album's own reach figure, shown in the vault */
+  reach: number
+  createdAt: number
+}
+
+export interface JobListing {
   id: string
   title: string
-  songIds: string[]
-  released: boolean
-  releaseWeek: number | null
+  emoji: string
+  pay: number
+  durationMs: number
+}
+
+export interface ActiveJob {
+  listingId: string
+  title: string
+  emoji: string
+  pay: number
+  startedAt: number
+  durationMs: number
+}
+
+export interface GigDef {
+  id: string
+  name: string
+  emoji: string
+  fansNeeded: number
+  pay: number
+  fans: number
+  cooldownMs: number
+  blurb: string
+}
+
+export interface StudioDef {
+  name: string
+  cost: number
   quality: number
-  streams: number
-  streamsThisWeek: number
-  peak: number
-  hue: number
-}
-
-export interface Rival {
-  id: string
-  name: string
-  genre: GenreId
-  fame: number // 0..100 star power
-  followers: number
-  hit: number // current single strength 0..100
-  heat: number // chart momentum
-  beef: number // -100 (best friend) .. 100 (mortal enemy)
-  hue: number
-  tag: string
-  single: string
-  lastActionHour: number
-}
-
-export interface LabelOffer {
-  id: string
-  name: string
-  advance: number
-  royalty: number // fraction of streaming income the label keeps (0..0.85)
-  albums: number
-  weeks: number
-  prestige: number
-  push: number // streams multiplier
-}
-
-export interface SignedDeal {
-  labelId: string
-  name: string
-  advance: number
-  royalty: number
-  albumsRemaining: number
-  albumsDelivered: number
-  weeksLeft: number
-  push: number
-  prestige: number
-  signedWeek: number
-  mastersOwned: boolean
-}
-
-export interface ChartEntry {
-  key: string
-  title: string
-  artist: string
-  score: number
-  mine: boolean
-  hue: number
-}
-
-export interface Charts {
-  week: number
-  songs: ChartEntry[]
-  albums: ChartEntry[]
-  artists: ChartEntry[]
-}
-
-export interface Award {
-  id: string
-  week: number
-  category: string
-  won: boolean
-  songTitle: string | null
-  rivalName: string | null
-  year: number
+  blurb: string
 }
 
 export interface LogEntry {
   id: string
-  hour: number
+  at: number
   text: string
-  kind: 'good' | 'bad' | 'neutral' | 'money' | 'music'
-}
-
-export interface Tour {
-  name: string
-  city: string
-  nightsLeft: number
-  totalNights: number
-  payoutPerNight: number
-  fansPerNight: number
-  energyPerNight: number
-  nextNightHour: number
-}
-
-export type ActivityId =
-  | 'rest'
-  | 'gym'
-  | 'studio-time'
-  | 'vocal-coach'
-  | 'writing-room'
-  | 'dance'
-  | 'producer-collab'
-  | 'club-appearance'
-  | 'local-show'
-  | 'post-clip'
-  | 'go-live'
-
-export interface PendingSong {
-  title: string
-  genre: GenreId
-  mood: MoodId
-  style: StyleId
-  quality: number
-  producer: string
-  cost: number
-  featureId: string | null
-  isDiss: boolean
-  targetRivalId: string | null
-}
-
-export interface VideoJob {
-  songId: string
-  kind: 'lyric' | 'concept'
-  hoursLeft: number
-  totalHours: number
-  cost: number
+  kind: 'money' | 'fan' | 'song' | 'reach' | 'info'
 }
 
 export interface GameState {
   version: number
-  createdAt: number
-  lastSaved: number
-  /** clock — total elapsed game hours since career start */
-  hour: number
-  week: number
-  year: number
-  playing: boolean
-  speed: number
-
-  // identity
   artistName: string
-  genre: GenreId
-  origin: string
-  portrait: Portrait
-  hue: number
 
-  // resources
-  money: number
-  energy: number
-  maxEnergy: number
-  health: number
-  age: number
-  followers: number
-  listeners: number
-  hype: number
-  exposure: number
-  controversy: number
+  cash: number
+  fans: number
+  totalStreams: number
+  gigsPlayed: number
 
-  skills: Skills
+  songwriting: number
+  virality: number
+  studioLevel: number
 
   songs: Song[]
   albums: Album[]
-  rivals: Rival[]
-  people: Person[]
-  room: RoomId | null
-  roomEnteredHour: number
-  dialogue: Dialogue | null
-  beat: Beat | null
-  boons: Boons
-  manager: { personId: string; name: string; cut: number } | null
-  press: { level: number; lastPieceWeek: number }
-  offers: LabelOffer[]
-  label: SignedDeal | null
-  charts: Charts
-  awards: Award[]
+
+  jobs: JobListing[]
+  jobsRefreshAt: number
+  activeJob: ActiveJob | null
+
+  writingStartedAt: number | null
+  writingDurationMs: number
+
+  /** temporary multipliers */
+  promoUntil: number
+  boostUntil: number
+  gigReadyAt: Record<string, number>
+
+  lastTick: number
+  startedAt: number
   log: LogEntry[]
-  tour: Tour | null
-  videos: VideoJob[]
-  pending: PendingSong | null
-
-  // purchases / progression
-  assets: string[]
-  studioLevel: number
-  radioTier: number
-  playlistPush: number
-  promoSpend: number
-  /** hour of last use, keyed by activity id */
-  cooldowns: Record<string, number>
-  featuresBought: string[]
-
-  // meta
-  retired: boolean
-  legacyLevel: number
-  hallOfFame: CareerRecord[]
-  lastSeenWeekChart: number
-  milestones: string[]
-}
-
-export interface CareerRecord {
-  name: string
-  genre: GenreId
-  years: number
-  peakFame: number
-  bestSong: string
-  earnings: number
-  awards: number
-  hue: number
-}
-
-export interface Portrait {
-  skin: number
-  hair: number
-  hairColor: number
-  eyes: number
-  outfit: number
-  accessory: number
-  hairStyle: number
 }
 
 export type Action =
-  | { type: 'TICK'; hours: number }
-  | { type: 'TOGGLE_PLAY' }
-  | { type: 'SET_SPEED'; speed: number }
-  | { type: 'START'; payload: StartPayload }
-  | { type: 'NEW_ARTIST'; payload: StartPayload }
-  | { type: 'TRAIN'; skill: SkillKey }
-  | { type: 'ACTIVITY'; id: ActivityId }
-  | { type: 'WRITE_SONG'; payload: WritePayload }
-  | { type: 'RELEASE_PENDING'; albumId?: string | null }
-  | { type: 'DISCARD_PENDING' }
-  | { type: 'HOLD_PENDING' }
-  | { type: 'RELEASE_VAULT'; songId: string; albumId?: string | null }
-  | { type: 'SHOOT_VIDEO'; songId: string; kind: 'lyric' | 'concept' }
-  | { type: 'BUY_PLAYLIST'; songId: string; tier: number }
-  | { type: 'MAKE_ALBUM'; title: string; songIds: string[] }
-  | { type: 'RELEASE_ALBUM'; albumId: string }
-  | { type: 'SIGN_OFFER'; offerId: string }
-  | { type: 'DECLINE_OFFER'; offerId: string }
-  | { type: 'BUY_MASTERS' }
-  | { type: 'BUY_ASSET'; assetId: string }
-  | { type: 'UPGRADE_STUDIO' }
-  | { type: 'SOCIAL'; rivalId: string; kind: 'compliment' | 'collab' | 'diss' | 'subtweet' }
-  | { type: 'ENTER_ROOM'; room: RoomId }
-  | { type: 'LEAVE_ROOM' }
-  | { type: 'TALK'; personId: string; topic: TopicId }
-  | { type: 'REPLY'; replyId: string }
-  | { type: 'CLOSE_BEAT' }
-  | { type: 'FAVOR'; personId: string }
-  | { type: 'BUY_ROUND'; personId: string }
-  | { type: 'HELP_OUT'; personId: string }
-  | { type: 'BURN_BRIDGE'; personId: string }
-  | { type: 'BOOK_TOUR'; tier: number }
-  | { type: 'REST' }
-  | { type: 'RETIRE' }
+  | { type: 'TICK'; now: number }
+  | { type: 'WRITE' }
+  | { type: 'CANCEL_WRITE' }
+  | { type: 'RENAME_SONG'; id: SongId; title: string }
+  | { type: 'RELEASE_SONG'; id: SongId }
+  | { type: 'RELEASE_ALBUM'; title: string; songIds: SongId[] }
+  | { type: 'TAKE_JOB'; id: string }
+  | { type: 'DO_GIG'; id: string }
+  | { type: 'BUY_STUDIO' }
+  | { type: 'BUY_PROMO' }
+  | { type: 'SET_NAME'; name: string }
   | { type: 'RESET' }
-  | { type: 'HYDRATE'; state: GameState }
-
-export interface StartPayload {
-  artistName: string
-  genre: GenreId
-  origin: string
-  portrait: Portrait
-  hue: number
-}
-
-export interface WritePayload {
-  title: string
-  genre: GenreId
-  mood: MoodId
-  style: StyleId
-  producerId: string
-  featureId: string | null
-}
