@@ -5,3 +5,6 @@ dist
 .DS_Store
 *.local
 *.tsbuildinfo
+
+# generated single-file build (npm run single)
+starmaker.html

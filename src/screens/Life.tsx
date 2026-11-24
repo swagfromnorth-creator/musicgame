@@ -1,13 +1,41 @@
-import { useState } from 'react'
+import { useRef, useState } from 'react'
 import { ASSETS, GENRES, money, ui } from '../game/data'
 import { assetFame, fameOf, totalStreamsPerHour } from '../game/engine'
 import type { GameState } from '../game/types'
 import { Art, Bar, Btn, Sheet } from '../components/Shared'
-import { useGame } from '../game/store'
+import { readSaveFile, useGame } from '../game/store'
 
 export function Life({ s }: { s: GameState }) {
   const { dispatch } = useGame()
   const [confirmRetire, setConfirmRetire] = useState(false)
+  const fileRef = useRef<HTMLInputElement>(null)
+
+  const exportSave = () => {
+    const slug = s.artistName.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '')
+    const blob = new Blob([JSON.stringify(s, null, 1)], { type: 'application/json' })
+    const url = URL.createObjectURL(blob)
+    const a = document.createElement('a')
+    a.href = url
+    a.download = `starmaker-${slug || 'artist'}-week-${s.week}.json`
+    document.body.appendChild(a)
+    a.click()
+    a.remove()
+    setTimeout(() => URL.revokeObjectURL(url), 1000)
+  }
+
+  const importSave = (file: File) => {
+    const reader = new FileReader()
+    reader.onload = () => {
+      const next = readSaveFile(String(reader.result))
+      if (!next) {
+        window.alert('That file is not a STARMAKER save.')
+        return
+      }
+      if (!window.confirm(`Load ${next.artistName} (week ${next.week})? Your current career will be replaced.`)) return
+      dispatch({ type: 'HYDRATE', state: next })
+    }
+    reader.readAsText(file)
+  }
   const fame = fameOf(s)
   const owned = s.assets.length
   const totalStreams = s.songs.reduce((a, b) => a + b.streams, 0)
@@ -191,6 +219,41 @@ export function Life({ s }: { s: GameState }) {
           >
             Wipe
           </Btn>
+        </div>
+      </div>
+
+      <div className="section-title">
+        <h2>Save data</h2>
+        <div className="line" />
+      </div>
+      <div className="card">
+        <div className="row between" style={{ gap: 10 }}>
+          <div className="grow">
+            <div style={{ fontWeight: 700, fontSize: 13 }}>Export / import</div>
+            <div className="tiny muted">
+              Download your career as a file, or load one. Useful if you play from a local HTML file,
+              or want to move a save between devices.
+            </div>
+          </div>
+        </div>
+        <div className="row" style={{ gap: 8, marginTop: 10 }}>
+          <Btn sm variant="flat" onClick={exportSave} style={{ flex: 1 }}>
+            ⬇ Export save
+          </Btn>
+          <Btn sm variant="flat" onClick={() => fileRef.current?.click()} style={{ flex: 1 }}>
+            ⬆ Import save
+          </Btn>
+          <input
+            ref={fileRef}
+            type="file"
+            accept="application/json,.json"
+            style={{ display: 'none' }}
+            onChange={(e) => {
+              const f = e.target.files?.[0]
+              if (f) importSave(f)
+              e.target.value = ''
+            }}
+          />
         </div>
       </div>
 

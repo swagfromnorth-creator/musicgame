@@ -45,7 +45,7 @@ const OFFLINE_RATE = 1.0
 
 const FALLBACK_SINGLES = ['Afterglow', 'No Signal', 'Golden Hour', 'Bad Weather', 'Static Love', 'Rooftop', 'Slow Burn', 'Wildfire']
 
-function migrate(s: GameState): GameState {
+export function migrate(s: GameState): GameState {
   s.videos = s.videos ?? []
   s.assets = s.assets ?? []
   s.offers = s.offers ?? []
@@ -86,6 +86,17 @@ export function clearSave() {
     localStorage.removeItem(SAVE_KEY)
   } catch {
     /* noop */
+  }
+}
+
+/** validate + repair a save that came from a file or another device */
+export function readSaveFile(text: string): GameState | null {
+  try {
+    const parsed = JSON.parse(text) as GameState
+    if (!parsed || typeof parsed.hour !== 'number' || typeof parsed.artistName !== 'string') return null
+    return migrate(parsed)
+  } catch {
+    return null
   }
 }
 

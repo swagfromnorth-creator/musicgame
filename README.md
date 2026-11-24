@@ -11,14 +11,27 @@ It's a mash-up of the three games that defined the genre:
 | **Music Star – Life Simulator** | Skill training, one-session songwriting, music videos, albums, health/age, legacy |
 | **Music Wars Rockstar** | Rival artists, beef meters, diss tracks, collabs, features, social following |
 
-## Running it
+## Three ways to play
+
+**1. Just open it (no install).** `starmaker.html` is a single self-contained file — the entire game,
+engine, styles and all, with no server and no network calls. Double-click it, or drag it into any
+browser. Regenerate it any time with `npm run single`.
+
+**2. Development server.**
 
 ```bash
 npm install
-npm run dev     # http://localhost:5173
-npm run build   # type-check + production bundle
-npm run smoke   # headless render test of every screen (jsdom)
+npm run dev       # http://localhost:5173, hot reload
+npm run build     # type-check + production bundle in dist/
+npm run single    # build, then pack dist/ into starmaker.html
+npm run smoke     # headless render test of every screen (jsdom)
 ```
+
+**3. Static host.** `npm run build` and drop `dist/` on Netlify, Vercel, GitHub Pages, any static
+host. (If you host it under a sub-path, set `base: './'` in `vite.config.ts` first.)
+
+Saves use `localStorage`. If your browser blocks storage for `file://` pages, the game still runs —
+use **Life → Save data → Export** to keep a career as a file, and import it back later.
 
 Progress saves to `localStorage` every few seconds. Closing the tab does not stop the world —
 streams, royalties, fans and tours keep running while you're gone (capped at ~12 game weeks,
