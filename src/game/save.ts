@@ -90,6 +90,17 @@ export function sanitizeSave(raw: unknown): GameState | null {
         }
       : null
 
+  const queueRaw = r.jobQueue
+  const jobQueue =
+    queueRaw && typeof queueRaw.title === 'string'
+      ? {
+          title: queueRaw.title,
+          emoji: str(queueRaw.emoji, '💼'),
+          pay: num(queueRaw.pay, 20),
+          durationMs: Math.max(2000, num(queueRaw.durationMs, 20000)),
+        }
+      : null
+
   const activeRaw = r.activeJob
   const activeJob =
     activeRaw && typeof activeRaw.title === 'string' && typeof activeRaw.startedAt === 'number'
@@ -132,6 +143,7 @@ export function sanitizeSave(raw: unknown): GameState | null {
     jobs: jobs.length ? jobs : base.jobs,
     jobsRefreshAt: num(r.jobsRefreshAt, base.jobsRefreshAt),
     activeJob,
+    jobQueue,
     training,
     writingStartedAt: typeof r.writingStartedAt === 'number' ? r.writingStartedAt : null,
     writingDurationMs: Math.max(5000, num(r.writingDurationMs, base.writingDurationMs)),

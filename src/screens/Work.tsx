@@ -35,22 +35,43 @@ export function Work() {
           </div>
         )}
 
-        {state.jobs.map((j) => (
-          <div className="job" key={j.id}>
+        {state.jobQueue && (
+          <div className="job queued">
             <div className="grow">
               <div className="row gap-sm">
-                <span>{j.emoji}</span>
-                <span>{j.title}</span>
+                <span>{state.jobQueue.emoji}</span>
+                <span>{state.jobQueue.title}</span>
+                <span className="pill">up next</span>
               </div>
               <span className="dim tiny">
-                {money(j.pay)} · takes {duration(j.durationMs)}
+                {money(state.jobQueue.pay)} · starts when this shift ends
               </span>
             </div>
-            <Btn small disabled={!!job} onClick={() => dispatch({ type: 'TAKE_JOB', id: j.id })}>
-              Take
+            <Btn small variant="ghost" onClick={() => dispatch({ type: 'CLEAR_QUEUE' })}>
+              Drop
             </Btn>
           </div>
-        ))}
+        )}
+
+        {state.jobs.map((j) => {
+          const full = !!job && !!state.jobQueue
+          return (
+            <div className="job" key={j.id}>
+              <div className="grow">
+                <div className="row gap-sm">
+                  <span>{j.emoji}</span>
+                  <span>{j.title}</span>
+                </div>
+                <span className="dim tiny">
+                  {money(j.pay)} · takes {duration(j.durationMs)}
+                </span>
+              </div>
+              <Btn small disabled={full} onClick={() => dispatch({ type: 'TAKE_JOB', id: j.id })}>
+                {job ? 'Queue' : 'Take'}
+              </Btn>
+            </div>
+          )
+        })}
 
         <p className="dim tiny">
           {nextTier

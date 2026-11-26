@@ -17,6 +17,7 @@ export const TUNE = {
   dollarsPerStream: 0.006,
   jobRefreshMs: 80_000,
   jobSlots: 3,
+  jobQueueSlots: 1,
   offlineCapMs: 8 * 60 * 60 * 1000,
   promoMs: 5 * 60 * 1000,
   promoCostBase: 400,
@@ -31,13 +32,14 @@ export const SKILLS: { id: SkillId; name: string; emoji: string; blurb: string }
   { id: 'virality', name: 'Virality', emoji: '📡', blurb: 'Every release reaches further and lasts longer.' },
 ]
 
+/** Rooms are rented by the session. The fee comes out of your pocket every time. */
 export const STUDIOS: StudioDef[] = [
-  { name: 'Bedroom', cost: 0, quality: 0, blurb: 'A laptop and a duvet over the mic.' },
-  { name: 'Rehearsal Room', cost: 300, quality: 8, blurb: 'Moved the dryer out. It echoes less.' },
-  { name: 'Project Studio', cost: 2_000, quality: 16, blurb: 'Real monitors, an engineer who cares.' },
-  { name: 'Pro Room', cost: 12_000, quality: 24, blurb: 'Outboard gear older than you are.' },
-  { name: 'Iconic Room', cost: 60_000, quality: 32, blurb: 'Gold records on the wall of the bathroom.' },
-  { name: 'The Big One', cost: 250_000, quality: 40, blurb: 'They schedule you six months out.' },
+  { name: 'Bedroom', cost: 0, quality: 0, blurb: 'A laptop and a duvet over the mic. Free, forever.' },
+  { name: 'Rehearsal Room', cost: 80, quality: 8, blurb: 'Moved the dryer out. It echoes less.' },
+  { name: 'Project Studio', cost: 300, quality: 16, blurb: 'Real monitors, an engineer who cares.' },
+  { name: 'Pro Room', cost: 1_000, quality: 26, blurb: 'Outboard gear older than you are.' },
+  { name: 'Iconic Room', cost: 4_000, quality: 38, blurb: 'Gold records on the wall of the bathroom.' },
+  { name: 'The Big One', cost: 15_000, quality: 52, blurb: 'They schedule you six months out.' },
 ]
 
 /** Paying creators to put a record in front of more people. Charged on release. */
@@ -73,7 +75,7 @@ export const JOB_TIERS: JobTier[] = [
   {
     fansNeeded: 0,
     pay: [14, 60],
-    seconds: [8, 26],
+    seconds: [20, 45],
     pool: [
       { title: 'Barista', emoji: '☕' },
       { title: 'Courier', emoji: '🚲' },
@@ -85,7 +87,7 @@ export const JOB_TIERS: JobTier[] = [
   {
     fansNeeded: 500,
     pay: [70, 260],
-    seconds: [12, 40],
+    seconds: [30, 65],
     pool: [
       { title: 'Session Player', emoji: '🎸' },
       { title: 'Wedding Band', emoji: '💒' },
@@ -97,7 +99,7 @@ export const JOB_TIERS: JobTier[] = [
   {
     fansNeeded: 5_000,
     pay: [400, 1_400],
-    seconds: [20, 60],
+    seconds: [45, 95],
     pool: [
       { title: 'Studio Session', emoji: '🎛️' },
       { title: 'Ad Jingle', emoji: '🎵' },
@@ -108,7 +110,7 @@ export const JOB_TIERS: JobTier[] = [
   {
     fansNeeded: 50_000,
     pay: [2_500, 9_000],
-    seconds: [40, 120],
+    seconds: [60, 150],
     pool: [
       { title: 'Brand Deal', emoji: '🤝' },
       { title: 'Sync Licence', emoji: '🎬' },

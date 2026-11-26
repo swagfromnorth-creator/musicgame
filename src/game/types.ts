@@ -58,6 +58,13 @@ export interface ActiveJob {
   durationMs: number
 }
 
+export interface QueuedJob {
+  title: string
+  emoji: string
+  pay: number
+  durationMs: number
+}
+
 export interface ActiveTraining {
   skill: SkillId
   startedAt: number
@@ -114,6 +121,8 @@ export interface GameState {
   jobs: JobListing[]
   jobsRefreshAt: number
   activeJob: ActiveJob | null
+  /** one more shift waiting; it starts the moment the current one ends */
+  jobQueue: QueuedJob | null
 
   training: ActiveTraining | null
   writingStartedAt: number | null
@@ -143,8 +152,9 @@ export type Action =
   | { type: 'RELEASE_ALBUM'; id: AlbumId }
   | { type: 'DISSOLVE_ALBUM'; id: AlbumId }
   | { type: 'TAKE_JOB'; id: string }
+  | { type: 'CLEAR_QUEUE' }
+  | { type: 'SELECT_STUDIO'; level: number }
   | { type: 'DO_GIG'; id: string }
-  | { type: 'BUY_STUDIO' }
   | { type: 'BUY_PROMO' }
   | { type: 'SET_NAME'; name: string }
   | { type: 'RESET' }

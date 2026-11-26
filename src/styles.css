@@ -630,3 +630,22 @@ button.title:hover {
   border-radius: 9px;
   word-break: break-word;
 }
+
+/* ---------------------------------------------------------------- work */
+.job.queued {
+  border-style: dashed;
+  opacity: 0.9;
+}
+.job.pick-row {
+  width: 100%;
+  text-align: left;
+  cursor: pointer;
+  color: inherit;
+}
+.job.pick-row.on {
+  border-color: rgba(124, 92, 255, 0.6);
+  background: rgba(124, 92, 255, 0.12);
+}
+.job.pick-row.locked {
+  opacity: 0.5;
+}

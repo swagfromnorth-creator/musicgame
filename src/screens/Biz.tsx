@@ -8,7 +8,6 @@ import { Btn } from '../ui/parts'
 export function Biz() {
   const { state, dispatch } = useGame()
   const now = Date.now()
-  const next = STUDIOS[state.studioLevel + 1]
   const studio = STUDIOS[state.studioLevel]
   const promoOn = Math.max(0, state.promoUntil - now)
   const cost = promoCost(state)
@@ -18,30 +17,28 @@ export function Biz() {
       <section className="card">
         <div className="row between">
           <h3>Studio</h3>
-          <span className="dim tiny">{studio.name}</span>
+          <span className="dim tiny">{studio.cost > 0 ? `${money(studio.cost)} a session` : 'free'}</span>
         </div>
         <p className="dim small">
-          The room you record in sets the floor on every song you write.
+          Rooms are rented by the session. The fee comes out of your pocket every time you write.
         </p>
-        {next ? (
-          <div className="job">
-            <div className="grow">
-              <div>{next.name}</div>
-              <span className="dim tiny">
-                quality +{next.quality} · {next.blurb}
-              </span>
-            </div>
-            <Btn
-              small
-              disabled={state.cash < next.cost}
-              onClick={() => dispatch({ type: 'BUY_STUDIO' })}
+        {STUDIOS.map((s2, i) => {
+          const on = i === state.studioLevel
+          const tooPoor = state.cash < s2.cost
+          return (
+            <button
+              key={s2.name}
+              className={`job pick-row${on ? ' on' : ''}${tooPoor && !on ? ' locked' : ''}`}
+              onClick={() => dispatch({ type: 'SELECT_STUDIO', level: i })}
             >
-              {money(next.cost)}
-            </Btn>
-          </div>
-        ) : (
-          <p className="dim tiny">This is as good as rooms get.</p>
-        )}
+              <div className="grow">
+                <div>{s2.name}</div>
+                <span className="dim tiny">quality +{s2.quality} · {s2.blurb}</span>
+              </div>
+              <span className="mono small">{s2.cost === 0 ? 'free' : money(s2.cost)}</span>
+            </button>
+          )
+        })}
       </section>
 
       <section className="card">

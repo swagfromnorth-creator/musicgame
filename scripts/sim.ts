@@ -21,10 +21,16 @@ function act(a: Parameters<typeof reducer>[1]) {
 
 // A player who is never idle: writing, working, releasing, gigging.
 function play() {
-  if (!s.activeJob) {
-    const best = [...s.jobs].sort((a, b) => b.pay / b.durationMs - a.pay / a.durationMs)[0]
-    if (best) act({ type: 'TAKE_JOB', id: best.id })
+  const bestJob = [...s.jobs].sort((a, b) => b.pay / b.durationMs - a.pay / a.durationMs)[0]
+  if (bestJob && !s.activeJob) act({ type: 'TAKE_JOB', id: bestJob.id })
+  else if (bestJob && !s.jobQueue && s.cash < 2000) act({ type: 'TAKE_JOB', id: bestJob.id })
+
+  // rent the best room you can comfortably afford each session
+  let level = 0
+  for (let i = STUDIOS.length - 1; i >= 0; i--) {
+    if (STUDIOS[i].cost <= s.cash * 0.25) { level = i; break }
   }
+  if (level !== s.studioLevel) act({ type: 'SELECT_STUDIO', level })
   if (s.writingStartedAt === null) act({ type: 'WRITE' })
   if (!s.training) {
     const next = [...SKILLS].sort((a, b) => s.skills[a.id] - s.skills[b.id]).find((k) => s.skills[k.id] < 100)?.id
@@ -44,8 +50,6 @@ function play() {
       act({ type: 'RELEASE_SONG', id: best.id })
     }
   }
-  const nextStudio = STUDIOS[s.studioLevel + 1]
-  if (nextStudio && s.cash >= nextStudio.cost * 1.2) act({ type: 'BUY_STUDIO' })
   for (const g of [...GIGS].reverse()) {
     if (s.fans >= g.fansNeeded && gigReady(s, g.id, clock) <= 0) {
       act({ type: 'DO_GIG', id: g.id })

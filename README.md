@@ -22,10 +22,10 @@ npm run single   # → starmaker.html (no server needed)
 
 | Tab | What you do |
 | --- | --- |
-| **Studio** | Press write and a session runs on a timer (1:30 at the start). Train one skill at a time — each level takes longer than the last, up to 100. |
+| **Studio** | Press write and a session runs on a timer (1:30 at the start), costing whatever your current room charges. Training runs on its own — one skill at a time, each level longer than the last, rolling straight into the next until you stop it or hit 100. |
 | **Vault** | Click any single or album to open it: rename it, book a promotional push, release it. Pick any number of songs for an album — one is a single, five is an album. |
-| **Work** | Jobs pay the bills. Three listings at a time, re-rolled every 80 seconds, one shift running at once. The work on offer is decided by your audience. Gigs pay, bring fans, and double your streaming for two minutes. |
-| **Biz** | Buy a better studio (raises the floor on every song), run a five-minute ad campaign (2× reach on everything), watch the numbers. |
+| **Work** | Jobs pay the bills. Three listings at a time, re-rolled every 80 seconds, one shift running and one queued behind it. The work on offer is decided by your audience. Gigs pay, bring fans, and double your streaming for two minutes. |
+| **Biz** | Rent your room by the session, run a five-minute ad campaign (2× reach on everything), watch the numbers. |
 
 ## Numbers
 
@@ -38,7 +38,9 @@ Four things matter: **cash, fans, streams, reach**.
   hours each record keeps earning.
 
 Skills only move by training: one at a time, and level *n* takes `10s × 1.045^n`
-(≈1:30 at 50, ≈6 minutes at 90).
+(≈1:30 at 50, ≈6 minutes at 90). Training never stops on its own — a finished
+level rolls straight into the next at the new, longer duration until you stop it
+or the skill hits 100.
 - **Fans** come from streams, and streams come from reach. Without reach a good
   song just sits there.
 - Songs decay: `exp(-age / lifespan)`. An album restarts that clock.
@@ -49,6 +51,22 @@ Every single and every album can be opened before release and attached to a
 promotional push — local, regional, national, global. The sheet shows the base
 reach, the reach you are buying, and the total. **Nothing is charged until the
 record actually comes out.**
+
+## Studios
+
+Rooms are rented, not bought. The bedroom is free and adds nothing; from there
+each room adds a flat quality bonus for a flat fee **per song**:
+
+| Room | Fee | Quality |
+| --- | --- | --- |
+| Bedroom | free | +0 |
+| Rehearsal Room | $80 | +8 |
+| Project Studio | $300 | +16 |
+| Pro Room | $1,000 | +26 |
+| Iconic Room | $4,000 | +38 |
+| The Big One | $15,000 | +52 |
+
+So every session is a bet: does this song earn back the room it was cut in?
 
 ## Work
 

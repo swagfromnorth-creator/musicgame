@@ -110,6 +110,56 @@ async function main() {
   )
   check('save: quality clamped', migrated.songs[0].quality === 44)
 
+  // ------------------------------------------------- reducer-level rules
+  // Drive the reducer on a fake clock to check the time-based rules.
+  const { reducer } = await import('../src/game/reducer')
+  const { initialState } = await import('../src/game/engine')
+  const realNow = Date.now
+  let clock = 1_700_000_000_000
+
+  Date.now = () => clock
+
+  let st = initialState(clock)
+  st = reducer(st, { type: 'TRAIN', skill: 'rhythm' } as any)
+  const firstLen = st.training!.durationMs
+  clock += firstLen + 50
+  st = reducer(st, { type: 'TICK', now: clock } as any)
+  check('training rolls into the next level', st.skills.rhythm === 1 && st.training !== null)
+  check('next level takes longer', (st.training?.durationMs ?? 0) > firstLen)
+
+  // leave it running for a long time — it should keep climbing on its own
+  clock += 1000 * 60 * 30
+  st = reducer(st, { type: 'TICK', now: clock } as any)
+  check('training continues unattended', st.skills.rhythm > 3, `level ${st.skills.rhythm}`)
+
+  // job queue
+  let w = initialState(clock)
+  w.jobs = [
+    { id: 'j1', title: 'Barista', emoji: '☕', pay: 50, durationMs: 10_000, tier: 0 },
+    { id: 'j2', title: 'Courier', emoji: '🚲', pay: 60, durationMs: 10_000, tier: 0 },
+  ]
+  w = reducer(w, { type: 'TAKE_JOB', id: 'j1' } as any)
+  w = reducer(w, { type: 'TAKE_JOB', id: 'j2' } as any)
+  check('one job queued behind the active one', !!w.activeJob && !!w.jobQueue)
+  clock += 11_000
+  w = reducer(w, { type: 'TICK', now: clock } as any)
+  check('queued job takes over when the shift ends', w.activeJob?.title === 'Courier' && !w.jobQueue)
+  check('shift paid out', w.cash === 90, `$${Math.round(w.cash)}`)  // $40 start + $50 shift
+
+  // studio fee is charged per song
+  let f = initialState(clock)
+  f.cash = 1_000
+  f.jobs = []
+  f.skills.songwriting = 0
+  f = reducer(f, { type: 'SELECT_STUDIO', level: 2 } as any)
+  const fee = (await import('../src/game/data')).STUDIOS[2].cost
+  f = reducer(f, { type: 'WRITE' } as any)
+  check('studio fee charged on writing', f.cash === 1_000 - fee, `spent ${1_000 - f.cash} of ${fee}`)
+  const broke = reducer({ ...f, cash: 0, writingStartedAt: null } as any, { type: 'WRITE' } as any)
+  check('cannot write without the fee', broke.writingStartedAt === null)
+
+  Date.now = realNow
+
   // ------------------------------------------------------- error boundary
   const { ErrorBoundary } = await import('../src/App')
   const bombRoot = document.createElement('div')
@@ -176,7 +226,8 @@ async function main() {
   await click('Release ·')
   // 3,000 − 1,200 regional push, charged at release (plus pennies of stream income)
   const cashNow = Number(((text().match(/\$([\d,\.]+)/) || [])[1] || '0').replace(/,/g, ''))
-  check('promo charged on release', cashNow > 1750 && cashNow < 1900, `cash ${cashNow}`)
+  // 3,000 − 80 session − 1,200 regional push
+  check('promo charged on release', cashNow > 1650 && cashNow < 1800, `cash ${cashNow}`)
   await click('Static Hours')
   check('single now reads as out', text().includes('Out now'))
   await click('✕')

@@ -10,6 +10,7 @@ import {
   rollQuality,
   songLifespan,
   songReachWithPromo,
+  studioFee,
   trainDurationMs,
   writeDurationMs,
 } from './engine'
@@ -35,8 +36,12 @@ export function reducer(state: GameState, action: Action): GameState {
     // ---------------------------------------------------------------- studio
     case 'WRITE': {
       if (s.writingStartedAt !== null) break
+      const fee = studioFee(s)
+      if (s.cash < fee) break
+      s.cash -= fee
       s.writingStartedAt = now
       s.writingDurationMs = writeDurationMs(s.skills)
+      if (fee > 0) log(s, `Paid $${fee.toLocaleString('en-US')} for the room.`, 'money', now)
       break
     }
 
@@ -175,16 +180,21 @@ export function reducer(state: GameState, action: Action): GameState {
 
     // ------------------------------------------------------------------ work
     case 'TAKE_JOB': {
-      if (s.activeJob) break
       const job = s.jobs.find((x) => x.id === action.id)
       if (!job) break
-      s.activeJob = {
-        title: job.title,
-        emoji: job.emoji,
-        pay: job.pay,
-        startedAt: now,
-        durationMs: job.durationMs,
+      const slot = { title: job.title, emoji: job.emoji, pay: job.pay, durationMs: job.durationMs }
+      if (!s.activeJob) {
+        s.activeJob = { ...slot, startedAt: now }
+        break
       }
+      if (s.jobQueue) break
+      s.jobQueue = slot
+      break
+    }
+
+    case 'CLEAR_QUEUE': {
+      if (s.jobQueue) log(s, `Dropped the ${s.jobQueue.title} shift.`, 'info', now)
+      s.jobQueue = null
       break
     }
 
@@ -203,12 +213,11 @@ export function reducer(state: GameState, action: Action): GameState {
     }
 
     // ------------------------------------------------------------------- biz
-    case 'BUY_STUDIO': {
-      const next = STUDIOS[s.studioLevel + 1]
-      if (!next || s.cash < next.cost) break
-      s.cash -= next.cost
-      s.studioLevel += 1
-      log(s, `Moved up to ${next.name}.`, 'info', now)
+    case 'SELECT_STUDIO': {
+      const level = Math.max(0, Math.min(STUDIOS.length - 1, Math.round(action.level)))
+      if (level === s.studioLevel) break
+      s.studioLevel = level
+      log(s, `You book sessions at ${STUDIOS[level].name} now.`, 'info', now)
       break
     }
 

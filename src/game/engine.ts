@@ -15,6 +15,10 @@ export function trainDurationMs(level: number): number {
   return Math.round(TUNE.trainBaseMs * Math.pow(TUNE.trainGrowth, Math.max(0, level)))
 }
 
+export function studioFee(s: GameState): number {
+  return STUDIOS[s.studioLevel]?.cost ?? 0
+}
+
 // ---------------------------------------------------------------------------
 // Work. The work on offer is decided by how many people know your name.
 // ---------------------------------------------------------------------------
@@ -135,6 +139,7 @@ export function initialState(now: number): GameState {
     jobs: rollJobs(now, 0),
     jobsRefreshAt: now + TUNE.jobRefreshMs,
     activeJob: null,
+    jobQueue: null,
     training: null,
     writingStartedAt: null,
     writingDurationMs: writeDurationMs({ songwriting: 0, rhythm: 0, virality: 0 }),
@@ -199,20 +204,40 @@ export function advance(s: GameState, now: number): void {
     log(s, `Finished a new song — ${quality}/100. It is in the vault.`, 'song', now)
   }
 
-  // training finishes one level at a time
-  if (s.training && now >= s.training.startedAt + s.training.durationMs) {
+  // training never stops on its own: each level rolls straight into the next
+  let guard = 0
+  while (s.training && now >= s.training.startedAt + s.training.durationMs && guard++ < 500) {
+    const finishedAt = s.training.startedAt + s.training.durationMs
     const id = s.training.skill
+    if (s.skills[id] >= TUNE.maxSkill) {
+      s.training = null
+      break
+    }
     s.skills[id] = clamp(s.skills[id] + 1, 0, TUNE.maxSkill)
-    s.training = null
-    log(s, `${skillName(id)} is now level ${s.skills[id]}.`, 'info', now)
+    if (s.skills[id] >= TUNE.maxSkill) {
+      s.training = null
+      log(s, `${skillName(id)} is maxed out at ${TUNE.maxSkill}.`, 'info', now)
+      break
+    }
+    s.training = {
+      skill: id,
+      startedAt: finishedAt,
+      durationMs: trainDurationMs(s.skills[id]),
+    }
   }
 
   // a finished shift pays out
   if (s.activeJob && now >= s.activeJob.startedAt + s.activeJob.durationMs) {
-    const pay = s.activeJob.pay
-    s.cash += pay
+    const finishedAt = s.activeJob.startedAt + s.activeJob.durationMs
+    s.cash += s.activeJob.pay
     log(s, `${s.activeJob.title} paid out.`, 'money', now)
+    const next = s.jobQueue
     s.activeJob = null
+    s.jobQueue = null
+    if (next) {
+      s.activeJob = { ...next, startedAt: Math.min(finishedAt, now) }
+      log(s, `${next.title} starts straight away.`, 'info', now)
+    }
   }
 
   // work is re-rolled on a timer, and improves as your audience grows

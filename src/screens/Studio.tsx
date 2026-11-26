@@ -1,6 +1,6 @@
 import React from 'react'
-import { SKILLS, STUDIOS, TUNE, duration } from '../game/data'
-import { trainDurationMs, writeDurationMs } from '../game/engine'
+import { SKILLS, STUDIOS, TUNE, duration, money } from '../game/data'
+import { studioFee, trainDurationMs, writeDurationMs } from '../game/engine'
 import { useGame } from '../game/store'
 import { Bar, Btn } from '../ui/parts'
 import type { SkillId } from '../game/types'
@@ -13,6 +13,8 @@ export function Studio() {
   const pct = writing ? 100 - (left / state.writingDurationMs) * 100 : 0
   const nextTime = writeDurationMs(state.skills)
   const studio = STUDIOS[state.studioLevel]
+  const fee = studioFee(state)
+  const short = state.cash < fee
 
   return (
     <div className="stack">
@@ -36,12 +38,16 @@ export function Studio() {
           <>
             <h2>Write a song</h2>
             <p className="dim small">
-              {duration(nextTime)} in the {studio.name.toLowerCase()}. It finishes itself — you can
-              go and earn while it cooks.
+              {duration(nextTime)} in the {studio.name.toLowerCase()}
+              {fee > 0 ? `, ${money(fee)} for the room` : ' — it is free in there'}. It finishes
+              itself — you can go and earn while it cooks.
             </p>
-            <Btn block onClick={() => dispatch({ type: 'WRITE' })}>
-              Start writing · {duration(nextTime)}
+            <Btn block disabled={short} onClick={() => dispatch({ type: 'WRITE' })}>
+              {short
+                ? `Need ${money(fee)} for the room`
+                : `Start writing · ${duration(nextTime)}${fee > 0 ? ` · ${money(fee)}` : ''}`}
             </Btn>
+            {short && <p className="dim tiny">You can rent a cheaper room in Biz.</p>}
           </>
         )}
       </section>
@@ -122,6 +128,10 @@ export function Studio() {
         <div className="row between">
           <span className="dim small">Quality bonus</span>
           <span className="small">+{studio.quality}</span>
+        </div>
+        <div className="row between">
+          <span className="dim small">Session fee</span>
+          <span className="small">{fee > 0 ? `${money(fee)} a song` : 'free'}</span>
         </div>
         <div className="row between">
           <span className="dim small">Songs in vault</span>
