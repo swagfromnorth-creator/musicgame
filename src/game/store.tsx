@@ -1,27 +1,18 @@
 import React, { createContext, useContext, useEffect, useMemo, useReducer, useRef } from 'react'
 import { advance, initialState } from './engine'
 import { reducer } from './reducer'
+import { readSave, writeSave } from './save'
 import type { Action, GameState } from './types'
 
-const SAVE_KEY = 'starmaker.v1.save'
-
 function load(): GameState {
-  const now = Date.now()
-  try {
-    const raw = typeof localStorage !== 'undefined' ? localStorage.getItem(SAVE_KEY) : null
-    if (raw) {
-      const parsed = JSON.parse(raw) as GameState
-      if (parsed && parsed.version === 1 && Array.isArray(parsed.songs)) {
-        // reopen the world: everything that happened while away still happens
-        const s: GameState = { ...parsed }
-        advance(s, now)
-        return s
-      }
-    }
-  } catch {
-    /* a corrupt save is just a new game */
+  const saved = readSave()
+  if (saved) {
+    // reopen the world: everything that happened while away still happens
+    const s: GameState = { ...saved }
+    advance(s, Date.now())
+    return s
   }
-  return initialState(now)
+  return initialState(Date.now())
 }
 
 interface Ctx {
@@ -44,21 +35,11 @@ export function GameProvider({ children }: { children: React.ReactNode }) {
     const now = Date.now()
     if (now - savedAt.current < 1500) return
     savedAt.current = now
-    try {
-      localStorage.setItem(SAVE_KEY, JSON.stringify(state))
-    } catch {
-      /* storage full or blocked — the game keeps running */
-    }
+    writeSave(state)
   }, [state])
 
   useEffect(() => {
-    const onHide = () => {
-      try {
-        localStorage.setItem(SAVE_KEY, JSON.stringify(state))
-      } catch {
-        /* ignore */
-      }
-    }
+    const onHide = () => writeSave(state)
     window.addEventListener('beforeunload', onHide)
     return () => window.removeEventListener('beforeunload', onHide)
   }, [state])
@@ -72,4 +53,3 @@ export function useGame() {
   if (!ctx) throw new Error('useGame outside GameProvider')
   return ctx
 }
-

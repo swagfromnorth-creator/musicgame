@@ -67,6 +67,11 @@ npx esbuild scripts/sim.ts --bundle --platform=node --format=esm \
 
 Timers are wall-clock (`Date.now()`), so closing the tab does not freeze the
 world and progress resumes on reopen. Everything lives in `localStorage`
-under `starmaker.v1.save`.
+under `starmaker.save`.
+
+Saves are treated as untrusted input: `sanitizeSave()` fills in or drops
+anything it does not recognise (including the older flat-skill format), and an
+error boundary catches anything that still gets through, so a bad save can
+never leave you staring at a black screen.
 
 Balance knobs sit at the top of `src/game/data.ts`.

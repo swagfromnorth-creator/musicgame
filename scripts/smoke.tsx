@@ -1,5 +1,8 @@
-// Headless smoke test: mount the real app in jsdom and walk the loop —
-// write, train, open a single, book a push, release, draft an album.
+// Headless smoke test.
+//  1. save loading must never throw, whatever is in localStorage
+//  2. a crash must render a readable panel, not a black screen
+//  3. the loop itself: write, train, work, open a single, book a push, release,
+//     draft an album
 import { JSDOM } from 'jsdom'
 
 const dom = new JSDOM('<!doctype html><html><body><div id="root"></div></body></html>', {
@@ -23,8 +26,48 @@ const errors: string[] = []
 const origError = console.error
 console.error = (...args: any[]) => {
   const msg = args.map(String).join(' ')
-  if (!msg.includes('not wrapped in act')) errors.push(msg)
+  if (!msg.includes('not wrapped in act') && !msg.includes('STARMAKER crashed')) errors.push(msg)
   origError(...args)
+}
+
+let failures = 0
+const check = (label: string, ok: boolean, extra = '') => {
+  if (!ok) failures++
+  console.log(`${ok ? 'ok  ' : 'FAIL'} ${label}${extra ? ' — ' + extra : ''}`)
+}
+
+// The exact shape the previous build wrote: flat skills, no `skills` object.
+const legacySave = {
+  version: 1,
+  artistName: 'You',
+  cash: 3_000,
+  fans: 250,
+  totalStreams: 12000,
+  gigsPlayed: 1,
+  songwriting: 12,
+  virality: 8,
+  studioLevel: 1,
+  songs: [
+    {
+      id: 'a', title: 'Neon Halo', quality: 44, createdAt: 1, releasedAt: 2,
+      lifeAnchor: 2, reach: 20, lifespanH: 48, streams: 4000, albumId: null,
+    },
+    { id: 'b', title: 'Static Hours', quality: 41, createdAt: 3, releasedAt: null, lifeAnchor: null, reach: 0, lifespanH: 0, streams: 0, albumId: null },
+    { id: 'c', title: 'Paper Weather', quality: 52, createdAt: 4, releasedAt: null, lifeAnchor: null, reach: 0, lifespanH: 0, streams: 0, albumId: null },
+  ],
+  albums: [],
+  jobs: [],
+  jobsRefreshAt: 9,
+  activeJob: null,
+  training: null,
+  writingStartedAt: null,
+  writingDurationMs: 90000,
+  promoUntil: 0,
+  boostUntil: 0,
+  gigReadyAt: {},
+  lastTick: 1,
+  startedAt: 1,
+  log: [],
 }
 
 async function main() {
@@ -32,22 +75,60 @@ async function main() {
   const { createRoot } = await import('react-dom/client')
   const actFn: any = (React as any).act ?? (await import('react-dom/test-utils')).act
   const act = (cb: any) => actFn(cb)
-  const { initialState } = await import('../src/game/engine')
+  const { sanitizeSave } = await import('../src/game/save')
 
-  // Seed a save so the vault has something in it without waiting on timers.
-  const seed = initialState(Date.now())
-  seed.cash = 9_000
-  seed.songs = [
-    {
-      id: 'song-a', title: 'Neon Halo', quality: 58, createdAt: Date.now(),
-      releasedAt: null, lifeAnchor: null, reach: 0, lifespanH: 0, streams: 0, albumId: null, promoTier: 0,
-    },
-    {
-      id: 'song-b', title: 'Static Hours', quality: 41, createdAt: Date.now(),
-      releasedAt: null, lifeAnchor: null, reach: 0, lifespanH: 0, streams: 0, albumId: null, promoTier: 0,
-    },
+  // ---------------------------------------------------------------- saves
+  const hostile: [string, any][] = [
+    ['legacy v1 save', legacySave],
+    ['empty object', {}],
+    ['null skills', { skills: null, songs: [] }],
+    ['skills as strings', { skills: { songwriting: 'x', rhythm: null, virality: {} } }],
+    ['songs not an array', { songs: 'nope', albums: 5, jobs: {} }],
+    ['junk songs', { songs: [null, 1, 'x', { id: 'ok', quality: 900 }], skills: {} }],
+    ['bad training', { training: { skill: 'nonsense', startedAt: 'soon' } }],
+    ['bad active job', { activeJob: { title: 5 } }],
+    ['negative numbers', { cash: -500, fans: -2, studioLevel: 99 }],
   ]
-  localStorage.setItem('starmaker.v1.save', JSON.stringify(seed))
+  for (const [label, raw] of hostile) {
+    let ok = true
+    let msg = ''
+    try {
+      const out = sanitizeSave(raw)
+      ok = !!out && typeof out.cash === 'number' && !!out.skills && Array.isArray(out.songs)
+    } catch (e: any) {
+      ok = false
+      msg = e.message
+    }
+    check(`save: ${label}`, ok, msg)
+  }
+  check('save: null is rejected', sanitizeSave(null) === null)
+  const migrated = sanitizeSave(legacySave)!
+  check(
+    'save: flat skills migrate',
+    migrated.skills.songwriting === 12 && migrated.skills.virality === 8 && migrated.skills.rhythm === 0,
+    `${migrated.skills.songwriting}/${migrated.skills.virality}/${migrated.skills.rhythm}`,
+  )
+  check('save: quality clamped', migrated.songs[0].quality === 44)
+
+  // ------------------------------------------------------- error boundary
+  const { ErrorBoundary } = await import('../src/App')
+  const bombRoot = document.createElement('div')
+  document.body.appendChild(bombRoot)
+  const Bomb = () => {
+    throw new Error('kaboom')
+  }
+  await act(async () => {
+    createRoot(bombRoot).render(
+      React.createElement(ErrorBoundary, null, React.createElement(Bomb)),
+    )
+  })
+  check('crash panel instead of black screen', (bombRoot.textContent || '').includes('Something broke'))
+  bombRoot.remove()
+  errors.length = 0 // React logs the deliberate bomb; that is the test working
+
+  // ------------------------------------------------------------ the loop
+  // Seed the *legacy* save: this is the case that used to black-screen.
+  localStorage.setItem('starmaker.v1.save', JSON.stringify(legacySave))
 
   const App = (await import('../src/App')).default
   const root = createRoot(document.getElementById('root')!)
@@ -56,61 +137,61 @@ async function main() {
   })
 
   const text = () => document.body.textContent || ''
-  const find = (sel: string, label: string) =>
-    [...document.querySelectorAll(sel)].find((b) => (b.textContent || '').includes(label))
-  const click = async (sel: string, label: string) => {
-    const el = find(sel, label)
-    if (!el) throw new Error(`no ${sel} matching "${label}"`)
+  const click = async (label: string) => {
+    const el = [...document.querySelectorAll('button')].find((b) =>
+      (b.textContent || '').includes(label),
+    )
+    if (!el) throw new Error(`no button matching "${label}"`)
     await act(async () => {
       el.dispatchEvent(new dom.window.MouseEvent('click', { bubbles: true }))
     })
     return el
   }
 
-  console.log('mounted:', text().includes('Fans'), '| reach stat:', text().includes('Reach'))
+  check('mounted from an old save', text().includes('Fans') && text().includes('Write a song'))
 
-  // writing
-  await click('button', 'Start writing')
-  console.log('writing started:', text().includes('Writing'))
+  await click('Start writing')
+  check('writing starts', text().includes('Writing'))
 
-  // training
-  const trainBtn = [...document.querySelectorAll('button')].filter((b) =>
+  const trainBtn = [...document.querySelectorAll('button')].find((b) =>
     /^\d+:\d\d$/.test((b.textContent || '').trim()),
-  )[0]
-  console.log('train buttons found:', document.querySelectorAll('.skill').length)
-  if (trainBtn) {
-    await act(async () => {
-      trainBtn.dispatchEvent(new dom.window.MouseEvent('click', { bubbles: true }))
-    })
-  }
-  console.log('training started:', text().includes('training…'))
+  )
+  await act(async () => {
+    trainBtn!.dispatchEvent(new dom.window.MouseEvent('click', { bubbles: true }))
+  })
+  check('training starts', text().includes('training…'))
 
-  // work
-  await click('button', 'Work')
-  await click('button', 'Take')
-  console.log('job taken:', text().includes('on shift'))
+  await click('Work')
+  await click('Take')
+  check('job taken', text().includes('on shift'))
 
-  // vault: open a single, book a push
-  await click('button', 'Vault')
-  console.log('vault lists songs:', text().includes('Neon Halo'))
-  await click('button', 'Neon Halo')
-  console.log('sheet open:', text().includes('Base reach'), '| promo tiers:', document.querySelectorAll('.promo-opt').length)
-  await click('button', 'Regional push')
-  console.log('push booked:', text().includes('You are agreeing to pay'))
-  await click('button', 'Release ·')
-  console.log('released:', text().includes('pay') === false || true, '| released section:', text().includes('streams'))
+  await click('Vault')
+  check('vault lists drafts and releases', text().includes('Neon Halo') && text().includes('Static Hours'))
 
-  // album draft
-  await click('button', 'Make an album')
-  await click('button', 'Draft')
-  console.log('album drafted:', text().includes('draft'))
+  await click('Static Hours')
+  check('single sheet opens', text().includes('Base reach'))
+  check('five promo tiers', document.querySelectorAll('.promo-opt').length === 5)
+  await click('Regional push')
+  check('push booked, charged later', text().includes('You are agreeing to pay'))
+  await click('Release ·')
+  // 3,000 − 1,200 regional push, charged at release (plus pennies of stream income)
+  const cashNow = Number(((text().match(/\$([\d,\.]+)/) || [])[1] || '0').replace(/,/g, ''))
+  check('promo charged on release', cashNow > 1750 && cashNow < 1900, `cash ${cashNow}`)
+  await click('Static Hours')
+  check('single now reads as out', text().includes('Out now'))
+  await click('✕')
 
-  console.log('ERRORS:', errors.length, errors.slice(0, 2))
-  process.exit(errors.length ? 1 : 0)
+  await click('Make an album')
+  await click('Draft')
+  check('album drafted', text().includes('draft'))
+
+  console.log('')
+  console.log(failures ? `FAILURES: ${failures}` : 'ALL CHECKS PASSED')
+  console.log('console errors:', errors.length, errors.slice(0, 2))
+  process.exit(failures || errors.length ? 1 : 0)
 }
 
 main().catch((e) => {
   console.error('FAILED', e)
-  process.exitCode = 1
   process.exit(1)
 })
