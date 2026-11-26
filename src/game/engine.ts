@@ -1,29 +1,46 @@
-import { GIGS, JOBS, STUDIOS, TUNE, randomTitle } from './data'
+import { JOB_TIERS, PROMO_TIERS, SKILLS, STUDIOS, TUNE, randomTitle } from './data'
 import type { GameState, JobListing, Song } from './types'
 
 export const clamp = (v: number, lo: number, hi: number) => Math.max(lo, Math.min(hi, v))
 const uid = () => Math.random().toString(36).slice(2, 9)
 
+export function skillName(id: keyof GameState['skills']): string {
+  return SKILLS.find((s) => s.id === id)?.name ?? id
+}
+
 // ---------------------------------------------------------------------------
-// Jobs: three random listings, thrown out and re-rolled every 80 seconds.
+// Training: one skill at a time, and every level takes longer than the last.
 // ---------------------------------------------------------------------------
+export function trainDurationMs(level: number): number {
+  return Math.round(TUNE.trainBaseMs * Math.pow(TUNE.trainGrowth, Math.max(0, level)))
+}
+
+// ---------------------------------------------------------------------------
+// Work. The work on offer is decided by how many people know your name.
+// ---------------------------------------------------------------------------
+export function unlockedTiers(fans: number): number {
+  let n = 1
+  for (let i = 0; i < JOB_TIERS.length; i++) if (fans >= JOB_TIERS[i].fansNeeded) n = i + 1
+  return n
+}
+
 export function rollJobs(now: number, fans: number): JobListing[] {
+  const count = unlockedTiers(fans)
   const out: JobListing[] = []
-  const used = new Set<number>()
-  while (out.length < TUNE.jobSlots) {
-    const i = (Math.random() * JOBS.length) | 0
-    if (used.has(i)) continue
-    used.add(i)
-    // a day job tops out: past a certain point it is pocket money
-    const scale = Math.min(4, 1 + Math.sqrt(Math.max(0, fans)) / 140)
-    const pay = Math.round((14 + Math.random() * 46) * scale)
-    const seconds = 8 + Math.random() * 22
+  for (let i = 0; i < TUNE.jobSlots; i++) {
+    // mostly the best tier you qualify for, sometimes one below for variety
+    const tierIdx = i === 0 || Math.random() < 0.65 ? count - 1 : (Math.random() * count) | 0
+    const tier = JOB_TIERS[tierIdx]
+    const job = tier.pool[(Math.random() * tier.pool.length) | 0]
+    const [lo, hi] = tier.pay
+    const [slo, shi] = tier.seconds
     out.push({
       id: uid(),
-      title: JOBS[i].title,
-      emoji: JOBS[i].emoji,
-      pay,
-      durationMs: Math.round(seconds * 1000),
+      title: job.title,
+      emoji: job.emoji,
+      pay: Math.round(lo + Math.random() * (hi - lo)),
+      durationMs: Math.round((slo + Math.random() * (shi - slo)) * 1000),
+      tier: tierIdx,
     })
   }
   return out
@@ -32,37 +49,53 @@ export function rollJobs(now: number, fans: number): JobListing[] {
 // ---------------------------------------------------------------------------
 // Songs
 // ---------------------------------------------------------------------------
-export function writeDurationMs(songwriting: number): number {
-  // 1:30 at the start, 0:40 with songwriting maxed
-  const speed = clamp(songwriting, 0, 100) / 100
-  return Math.round(TUNE.writeBaseMs * (1 - speed * TUNE.writeSpeedCut))
+export function writeDurationMs(skills: GameState['skills']): number {
+  const cut =
+    (clamp(skills.rhythm, 0, 100) / 100) * TUNE.rhythmSpeedCut +
+    (clamp(skills.songwriting, 0, 100) / 100) * TUNE.songwritingSpeedCut
+  return Math.round(TUNE.writeBaseMs * (1 - cut))
 }
 
-export function rollQuality(state: GameState): number {
-  const studio = STUDIOS[state.studioLevel]?.quality ?? 0
-  const base = TUNE.qualityBase + state.songwriting * TUNE.qualityPerSkill + studio
+export function rollQuality(s: GameState): number {
+  const studio = STUDIOS[s.studioLevel]?.quality ?? 0
+  const base = TUNE.qualityBase + s.skills.songwriting * TUNE.qualityPerSkill + studio
   return clamp(Math.round(base + (Math.random() * 14 - 6)), 1, 100)
 }
 
-export function songReach(virality: number, quality: number): number {
+export function baseSongReach(virality: number, quality: number): number {
   return Math.round((6 + virality * 0.55 + quality * 0.22) * 10) / 10
+}
+
+export function promoOf(tier: number) {
+  return PROMO_TIERS[clamp(tier, 0, PROMO_TIERS.length - 1)]
+}
+
+export function songReachWithPromo(virality: number, quality: number, promoTier: number): number {
+  return Math.round((baseSongReach(virality, quality) + promoOf(promoTier).reach) * 10) / 10
 }
 
 export function songLifespan(virality: number): number {
   return Math.round(40 + virality * 1.1)
 }
 
+export function albumReachFor(s: GameState, songIds: string[], promoTier: number): number {
+  const songs = s.songs.filter((x) => songIds.includes(x.id))
+  if (!songs.length) return 0
+  const avg = songs.reduce((a, b) => a + baseSongReach(s.skills.virality, b.quality), 0) / songs.length
+  const reach = avg * (1.2 + s.skills.virality / 400) + promoOf(promoTier).reach
+  return Math.round(reach * 10) / 10
+}
+
 /** How many plays per hour one record is doing right now. */
 export function songRate(s: GameState, song: Song, now: number): number {
-  if (!song.releasedAt || song.lifeAnchor === null || song.streams < 0) return 0
+  if (!song.releasedAt || song.lifeAnchor === null) return 0
   const ageH = Math.max(0, (now - song.lifeAnchor) / 3_600_000)
   const decay = Math.exp(-ageH / Math.max(1, song.lifespanH))
-  const decayFloor = 0.02
   const reachMul = 0.25 + song.reach / 45
   const audience = 1 + Math.sqrt(Math.max(0, s.fans)) / 60
   const promo = now < s.promoUntil ? TUNE.promoMult : 1
   const boost = now < s.boostUntil ? TUNE.boostMult : 1
-  return song.quality * 0.85 * reachMul * Math.max(decayFloor, decay) * audience * promo * boost
+  return song.quality * 0.85 * reachMul * Math.max(0.02, decay) * audience * promo * boost
 }
 
 export function totalStreamsPerHour(s: GameState, now: number): number {
@@ -71,7 +104,7 @@ export function totalStreamsPerHour(s: GameState, now: number): number {
   return t
 }
 
-/** The headline reach figure: what your catalogue averages, and how long it lasts. */
+/** The headline figure: what your catalogue averages, and how long it lasts. */
 export function reachStats(s: GameState): { reach: number; lifespanH: number } {
   const released = s.songs.filter((x) => x.releasedAt)
   if (!released.length) return { reach: 0, lifespanH: 0 }
@@ -81,8 +114,7 @@ export function reachStats(s: GameState): { reach: number; lifespanH: number } {
 }
 
 export function gigReady(s: GameState, id: string, now: number): number {
-  const at = s.gigReadyAt[id] ?? 0
-  return Math.max(0, at - now)
+  return Math.max(0, (s.gigReadyAt[id] ?? 0) - now)
 }
 
 // ---------------------------------------------------------------------------
@@ -96,16 +128,16 @@ export function initialState(now: number): GameState {
     fans: 0,
     totalStreams: 0,
     gigsPlayed: 0,
-    songwriting: 0,
-    virality: 0,
+    skills: { songwriting: 0, rhythm: 0, virality: 0 },
     studioLevel: 0,
     songs: [],
     albums: [],
     jobs: rollJobs(now, 0),
     jobsRefreshAt: now + TUNE.jobRefreshMs,
     activeJob: null,
+    training: null,
     writingStartedAt: null,
-    writingDurationMs: writeDurationMs(0),
+    writingDurationMs: writeDurationMs({ songwriting: 0, rhythm: 0, virality: 0 }),
     promoUntil: 0,
     boostUntil: 0,
     gigReadyAt: {},
@@ -136,9 +168,7 @@ export function advance(s: GameState, now: number): void {
   let gained = 0
   for (const song of s.songs) {
     if (!song.releasedAt) continue
-    const atStart = songRate(s, song, from)
-    const atEnd = songRate(s, song, now)
-    const avg = (atStart + atEnd) / 2
+    const avg = (songRate(s, song, from) + songRate(s, song, now)) / 2
     const add = (avg * elapsed) / 3_600_000
     song.streams += add
     gained += add
@@ -163,10 +193,18 @@ export function advance(s: GameState, now: number): void {
       lifespanH: 0,
       streams: 0,
       albumId: null,
+      promoTier: 0,
     })
     s.writingStartedAt = null
-    s.songwriting = clamp(s.songwriting + 1.15 * (1 - s.songwriting / 130), 0, 100)
     log(s, `Finished a new song — ${quality}/100. It is in the vault.`, 'song', now)
+  }
+
+  // training finishes one level at a time
+  if (s.training && now >= s.training.startedAt + s.training.durationMs) {
+    const id = s.training.skill
+    s.skills[id] = clamp(s.skills[id] + 1, 0, TUNE.maxSkill)
+    s.training = null
+    log(s, `${skillName(id)} is now level ${s.skills[id]}.`, 'info', now)
   }
 
   // a finished shift pays out
@@ -177,7 +215,7 @@ export function advance(s: GameState, now: number): void {
     s.activeJob = null
   }
 
-  // jobs are re-rolled on a timer
+  // work is re-rolled on a timer, and improves as your audience grows
   if (now >= s.jobsRefreshAt) {
     s.jobs = rollJobs(now, s.fans)
     s.jobsRefreshAt = now + TUNE.jobRefreshMs
@@ -189,12 +227,4 @@ export function advance(s: GameState, now: number): void {
 
 export function promoCost(s: GameState): number {
   return Math.round(TUNE.promoCostBase * (1 + s.fans / 250_000))
-}
-
-export function availableGigs(s: GameState, now: number) {
-  return GIGS.map((g) => ({
-    def: g,
-    unlocked: s.fans >= g.fansNeeded,
-    readyIn: gigReady(s, g.id, now),
-  }))
 }

@@ -1,6 +1,6 @@
 // Headless pacing check. Drives the real reducer with a virtual clock and a
 // simple "always be busy" player, then prints the curve.
-import { GIGS, STUDIOS, duration, money, num } from '../src/game/data'
+import { GIGS, PROMO_TIERS, SKILLS, STUDIOS, duration, money, num } from '../src/game/data'
 import { gigReady, initialState, promoCost, reachStats, totalStreamsPerHour } from '../src/game/engine'
 import { reducer } from '../src/game/reducer'
 import type { GameState } from '../src/game/types'
@@ -26,14 +26,24 @@ function play() {
     if (best) act({ type: 'TAKE_JOB', id: best.id })
   }
   if (s.writingStartedAt === null) act({ type: 'WRITE' })
-
-  const draft = s.songs.filter((x) => !x.releasedAt)
-  if (draft.length) {
-    // hold singles until they are worth releasing, then drop the best one
-    const best = draft.sort((a, b) => b.quality - a.quality)[0]
-    if (best.quality >= 35 || draft.length >= 3) act({ type: 'RELEASE_SONG', id: best.id })
+  if (!s.training) {
+    const next = [...SKILLS].sort((a, b) => s.skills[a.id] - s.skills[b.id]).find((k) => s.skills[k.id] < 100)?.id
+    if (next) act({ type: 'TRAIN', skill: next })
   }
-  if (s.cash >= promoCost(s) * 1.5) act({ type: 'BUY_PROMO' })
+
+  const draft = s.songs.filter((x) => !x.releasedAt && !x.albumId)
+  if (draft.length) {
+    const best = draft.sort((a, b) => b.quality - a.quality)[0]
+    if (best.quality >= 35 || draft.length >= 3) {
+      // spend on a push if there is comfortable cash for it
+      let tier = 0
+      for (let i = PROMO_TIERS.length - 1; i >= 0; i--) {
+        if (PROMO_TIERS[i].cost <= s.cash * 0.35) { tier = i; break }
+      }
+      if (tier > 0) act({ type: 'SET_SONG_PROMO', id: best.id, tier })
+      act({ type: 'RELEASE_SONG', id: best.id })
+    }
+  }
   const nextStudio = STUDIOS[s.studioLevel + 1]
   if (nextStudio && s.cash >= nextStudio.cost * 1.2) act({ type: 'BUY_STUDIO' })
   for (const g of [...GIGS].reverse()) {
@@ -56,7 +66,7 @@ for (let t = 0; t < total; t += step) {
     const r = reachStats(s)
     const out = s.songs.filter((x) => x.releasedAt).length
     console.log(
-      `${duration(clock - START).padEnd(6)} ${money(s.cash).padStart(10)} ${num(s.fans).padStart(9)} ${num(totalStreamsPerHour(s, clock)).padStart(11)} ${String(r.reach).padStart(6)} ${String(r.lifespanH + 'h').padStart(5)} ${out}/${s.songs.length}`,
+      `${duration(clock - START).padEnd(6)} ${money(s.cash).padStart(10)} ${num(s.fans).padStart(9)} ${num(totalStreamsPerHour(s, clock)).padStart(11)} ${String(r.reach).padStart(6)} ${String(r.lifespanH + 'h').padStart(5)} ${out}/${s.songs.length}  sw${Math.round(s.skills.songwriting)} rh${Math.round(s.skills.rhythm)} vi${Math.round(s.skills.virality)}`,
     )
   }
 }

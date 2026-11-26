@@ -1,26 +1,35 @@
-import type { GigDef, StudioDef } from './types'
+import type { GigDef, PromoTier, SkillId, StudioDef } from './types'
 
 // ---------------------------------------------------------------------------
 // Tunables — one place, so balancing is not a scavenger hunt.
 // ---------------------------------------------------------------------------
 export const TUNE = {
-  writeBaseMs: 90_000, // 1:30 at zero skill
-  writeSpeedCut: 0.55, // max skill → writing takes 45% of base (1:30 → 0:40)
-  qualityBase: 16,
-  qualityPerSkill: 0.55,
+  writeBaseMs: 90_000, // 1:30 with no skills at all
+  rhythmSpeedCut: 0.5, // rhythm 100 → half the writing time
+  songwritingSpeedCut: 0.2, // songwriting 100 → another 20% off
+  qualityBase: 14,
+  qualityPerSkill: 0.62,
   qualityPerStudio: 8,
+  trainBaseMs: 10_000,
+  trainGrowth: 1.045, // level 50 ≈ 1:30, level 90 ≈ 6 min
+  maxSkill: 100,
   fanPerStream: 0.045,
   dollarsPerStream: 0.006,
   jobRefreshMs: 80_000,
   jobSlots: 3,
   offlineCapMs: 8 * 60 * 60 * 1000,
-  promoCappedMs: 5 * 60 * 1000,
   promoMs: 5 * 60 * 1000,
   promoCostBase: 400,
+  promoMult: 2,
   boostMs: 120_000,
   boostMult: 1.6,
-  promoMult: 2,
 }
+
+export const SKILLS: { id: SkillId; name: string; emoji: string; blurb: string }[] = [
+  { id: 'songwriting', name: 'Songwriting', emoji: '✍️', blurb: 'Better numbers on every song you finish.' },
+  { id: 'rhythm', name: 'Rhythm', emoji: '🥁', blurb: 'You finish songs faster.' },
+  { id: 'virality', name: 'Virality', emoji: '📡', blurb: 'Every release reaches further and lasts longer.' },
+]
 
 export const STUDIOS: StudioDef[] = [
   { name: 'Bedroom', cost: 0, quality: 0, blurb: 'A laptop and a duvet over the mic.' },
@@ -29,6 +38,15 @@ export const STUDIOS: StudioDef[] = [
   { name: 'Pro Room', cost: 12_000, quality: 24, blurb: 'Outboard gear older than you are.' },
   { name: 'Iconic Room', cost: 60_000, quality: 32, blurb: 'Gold records on the wall of the bathroom.' },
   { name: 'The Big One', cost: 250_000, quality: 40, blurb: 'They schedule you six months out.' },
+]
+
+/** Paying creators to put a record in front of more people. Charged on release. */
+export const PROMO_TIERS: PromoTier[] = [
+  { name: 'No push', cost: 0, reach: 0, blurb: 'It goes out as it is.' },
+  { name: 'Local push', cost: 150, reach: 8, blurb: 'A few blogs, a couple of playlists.' },
+  { name: 'Regional push', cost: 1_200, reach: 24, blurb: 'Radio pluggers and a playlist run.' },
+  { name: 'National push', cost: 9_000, reach: 60, blurb: 'Billboards, a TV slot, a press day.' },
+  { name: 'Global blitz', cost: 75_000, reach: 150, blurb: 'Everywhere at once, all at the same time.' },
 ]
 
 export const GIGS: GigDef[] = [
@@ -40,19 +58,64 @@ export const GIGS: GigDef[] = [
   { id: 'arena', name: 'Arena Night', emoji: '🏟️', fansNeeded: 400_000, pay: 60_000, fans: 4_000, cooldownMs: 120_000, blurb: 'The roof is closed and it is still loud.' },
 ]
 
-export const JOBS: { title: string; emoji: string }[] = [
-  { title: 'Barista', emoji: '☕' },
-  { title: 'Bar Back', emoji: '🍺' },
-  { title: 'Warehouse', emoji: '📦' },
-  { title: 'Courier', emoji: '🚲' },
-  { title: 'Line Cook', emoji: '🍳' },
-  { title: 'Retail Floor', emoji: '🛍️' },
-  { title: 'Security', emoji: '🦺' },
-  { title: 'Tutor', emoji: '📚' },
-  { title: 'Cleaner', emoji: '🧽' },
-  { title: 'Studio Intern', emoji: '🎛️' },
-  { title: 'Rideshare', emoji: '🚗' },
-  { title: 'Flyer Handout', emoji: '📄' },
+/**
+ * Work is tiered by audience. Nobody hands a session gig to an unknown, and
+ * nobody offers a sync licence to somebody with forty followers.
+ */
+export interface JobTier {
+  fansNeeded: number
+  pay: [number, number]
+  seconds: [number, number]
+  pool: { title: string; emoji: string }[]
+}
+
+export const JOB_TIERS: JobTier[] = [
+  {
+    fansNeeded: 0,
+    pay: [14, 60],
+    seconds: [8, 26],
+    pool: [
+      { title: 'Barista', emoji: '☕' },
+      { title: 'Courier', emoji: '🚲' },
+      { title: 'Retail Floor', emoji: '🛍️' },
+      { title: 'Warehouse', emoji: '📦' },
+      { title: 'Flyer Handout', emoji: '📄' },
+    ],
+  },
+  {
+    fansNeeded: 500,
+    pay: [70, 260],
+    seconds: [12, 40],
+    pool: [
+      { title: 'Session Player', emoji: '🎸' },
+      { title: 'Wedding Band', emoji: '💒' },
+      { title: 'Bar Shift', emoji: '🍺' },
+      { title: 'Rideshare', emoji: '🚗' },
+      { title: 'Music Tutor', emoji: '📚' },
+    ],
+  },
+  {
+    fansNeeded: 5_000,
+    pay: [400, 1_400],
+    seconds: [20, 60],
+    pool: [
+      { title: 'Studio Session', emoji: '🎛️' },
+      { title: 'Ad Jingle', emoji: '🎵' },
+      { title: 'Club Residency', emoji: '🎧' },
+      { title: 'Corporate Gig', emoji: '💼' },
+    ],
+  },
+  {
+    fansNeeded: 50_000,
+    pay: [2_500, 9_000],
+    seconds: [40, 120],
+    pool: [
+      { title: 'Brand Deal', emoji: '🤝' },
+      { title: 'Sync Licence', emoji: '🎬' },
+      { title: 'Feature Verse', emoji: '🎤' },
+      { title: 'Appearance Fee', emoji: '🎪' },
+    ],
+  },
 ]
 
 const A = ['Neon', 'Static', 'Golden', 'Broken', 'Slow', 'Paper', 'Midnight', 'Ultra', 'Silver', 'Hollow', 'Electric', 'Loose', 'Cheap', 'Vacant', 'Summer', 'Fever', 'Glass', 'Bad']

@@ -46,15 +46,16 @@ export function Biz() {
 
       <section className="card">
         <div className="row between">
-          <h3>Promotion</h3>
+          <h3>Ad campaign</h3>
           <span className="dim tiny">{promoOn > 0 ? `${Math.ceil(promoOn / 1000)}s left` : 'idle'}</span>
         </div>
         <p className="dim small">
-          Pays for ads, playlisting and a publicist for five minutes. Everything you have out
-          reaches {TUNE.promoMult}× further while it runs.
+          Five minutes of blanket spend. Everything you already have out reaches {TUNE.promoMult}×
+          further while it runs. For reach that sticks to one record, book a push before you release
+          it.
         </p>
         <Btn block variant={promoOn > 0 ? 'ghost' : 'primary'} disabled={state.cash < cost} onClick={() => dispatch({ type: 'BUY_PROMO' })}>
-          {promoOn > 0 ? `Extend · ${money(cost)}` : `Run promotion · ${money(cost)}`}
+          {promoOn > 0 ? `Extend · ${money(cost)}` : `Start campaign · ${money(cost)}`}
         </Btn>
       </section>
 

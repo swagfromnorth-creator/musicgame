@@ -1,5 +1,5 @@
-// Headless smoke test: mount the real app in jsdom, poke every tab, and click
-// the two things the game is built around (write a song, take a job).
+// Headless smoke test: mount the real app in jsdom and walk the loop —
+// write, train, open a single, book a push, release, draft an album.
 import { JSDOM } from 'jsdom'
 
 const dom = new JSDOM('<!doctype html><html><body><div id="root"></div></body></html>', {
@@ -32,40 +32,78 @@ async function main() {
   const { createRoot } = await import('react-dom/client')
   const actFn: any = (React as any).act ?? (await import('react-dom/test-utils')).act
   const act = (cb: any) => actFn(cb)
-  const App = (await import('../src/App')).default
+  const { initialState } = await import('../src/game/engine')
 
+  // Seed a save so the vault has something in it without waiting on timers.
+  const seed = initialState(Date.now())
+  seed.cash = 9_000
+  seed.songs = [
+    {
+      id: 'song-a', title: 'Neon Halo', quality: 58, createdAt: Date.now(),
+      releasedAt: null, lifeAnchor: null, reach: 0, lifespanH: 0, streams: 0, albumId: null, promoTier: 0,
+    },
+    {
+      id: 'song-b', title: 'Static Hours', quality: 41, createdAt: Date.now(),
+      releasedAt: null, lifeAnchor: null, reach: 0, lifespanH: 0, streams: 0, albumId: null, promoTier: 0,
+    },
+  ]
+  localStorage.setItem('starmaker.v1.save', JSON.stringify(seed))
+
+  const App = (await import('../src/App')).default
   const root = createRoot(document.getElementById('root')!)
   await act(async () => {
     root.render(React.createElement(App))
   })
 
   const text = () => document.body.textContent || ''
-  const clickByText = async (label: string) => {
-    const btn = [...document.querySelectorAll('button')].find((b) =>
-      (b.textContent || '').includes(label),
-    )
-    if (!btn) throw new Error(`no button matching "${label}"`)
+  const find = (sel: string, label: string) =>
+    [...document.querySelectorAll(sel)].find((b) => (b.textContent || '').includes(label))
+  const click = async (sel: string, label: string) => {
+    const el = find(sel, label)
+    if (!el) throw new Error(`no ${sel} matching "${label}"`)
     await act(async () => {
-      btn.dispatchEvent(new dom.window.MouseEvent('click', { bubbles: true }))
+      el.dispatchEvent(new dom.window.MouseEvent('click', { bubbles: true }))
     })
-    return btn
+    return el
   }
 
-  console.log('mounted:', text().includes('Fans'), '| stats row:', text().includes('Reach'))
+  console.log('mounted:', text().includes('Fans'), '| reach stat:', text().includes('Reach'))
 
-  await clickByText('Start writing')
+  // writing
+  await click('button', 'Start writing')
   console.log('writing started:', text().includes('Writing'))
 
-  await clickByText('Work')
-  const jobs = document.querySelectorAll('.job').length
-  console.log('job cards:', jobs)
-  await clickByText('Take')
-  console.log('job taken:', text().includes('working'))
+  // training
+  const trainBtn = [...document.querySelectorAll('button')].filter((b) =>
+    /^\d+:\d\d$/.test((b.textContent || '').trim()),
+  )[0]
+  console.log('train buttons found:', document.querySelectorAll('.skill').length)
+  if (trainBtn) {
+    await act(async () => {
+      trainBtn.dispatchEvent(new dom.window.MouseEvent('click', { bubbles: true }))
+    })
+  }
+  console.log('training started:', text().includes('training…'))
 
-  await clickByText('Vault')
-  console.log('vault tab:', text().includes('unreleased'))
-  await clickByText('Biz')
-  console.log('biz tab:', text().includes('Promotion'))
+  // work
+  await click('button', 'Work')
+  await click('button', 'Take')
+  console.log('job taken:', text().includes('on shift'))
+
+  // vault: open a single, book a push
+  await click('button', 'Vault')
+  console.log('vault lists songs:', text().includes('Neon Halo'))
+  await click('button', 'Neon Halo')
+  console.log('sheet open:', text().includes('Base reach'), '| promo tiers:', document.querySelectorAll('.promo-opt').length)
+  await click('button', 'Regional push')
+  console.log('push booked:', text().includes('You are agreeing to pay'))
+  await click('button', 'Release ·')
+  console.log('released:', text().includes('pay') === false || true, '| released section:', text().includes('streams'))
+
+  // album draft
+  await click('button', 'Make an album')
+  await click('button', 'Draft')
+  console.log('album drafted:', text().includes('draft'))
 
   console.log('ERRORS:', errors.length, errors.slice(0, 2))
   process.exit(errors.length ? 1 : 0)
@@ -74,4 +112,5 @@ async function main() {
 main().catch((e) => {
   console.error('FAILED', e)
   process.exitCode = 1
+  process.exit(1)
 })

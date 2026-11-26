@@ -1,6 +1,6 @@
 import React from 'react'
-import { GIGS, duration, money, num } from '../game/data'
-import { gigReady } from '../game/engine'
+import { GIGS, JOB_TIERS, duration, money, num } from '../game/data'
+import { gigReady, unlockedTiers } from '../game/engine'
 import { useGame } from '../game/store'
 import { Bar, Btn } from '../ui/parts'
 
@@ -11,15 +11,15 @@ export function Work() {
   const jobLeft = job ? Math.max(0, job.startedAt + job.durationMs - now) : 0
   const jobPct = job ? 100 - (jobLeft / job.durationMs) * 100 : 0
   const refreshIn = Math.max(0, state.jobsRefreshAt - now)
+  const tiers = unlockedTiers(state.fans)
+  const nextTier = JOB_TIERS[tiers]
 
   return (
     <div className="stack">
       <section className="card">
         <div className="row between">
-          <h3>Job</h3>
-          <span className="dim tiny">
-            {job ? 'working' : `new listings in ${duration(refreshIn)}`}
-          </span>
+          <h3>Work</h3>
+          <span className="dim tiny">{job ? 'on shift' : `new in ${duration(refreshIn)}`}</span>
         </div>
 
         {job && (
@@ -51,9 +51,11 @@ export function Work() {
             </Btn>
           </div>
         ))}
+
         <p className="dim tiny">
-          One shift at a time. Listings are thrown out every 80 seconds — finish one and you can
-          take it again.
+          {nextTier
+            ? `At ${num(nextTier.fansNeeded)} fans the work gets better than this.`
+            : 'This is as good as the work gets. You should be past needing it.'}
         </p>
       </section>
 

@@ -1,8 +1,9 @@
 import React from 'react'
-import { STUDIOS, duration } from '../game/data'
-import { writeDurationMs } from '../game/engine'
+import { SKILLS, STUDIOS, TUNE, duration } from '../game/data'
+import { trainDurationMs, writeDurationMs } from '../game/engine'
 import { useGame } from '../game/store'
 import { Bar, Btn } from '../ui/parts'
+import type { SkillId } from '../game/types'
 
 export function Studio() {
   const { state, dispatch } = useGame()
@@ -10,7 +11,7 @@ export function Studio() {
   const writing = state.writingStartedAt !== null
   const left = writing ? Math.max(0, state.writingStartedAt! + state.writingDurationMs - now) : 0
   const pct = writing ? 100 - (left / state.writingDurationMs) * 100 : 0
-  const nextTime = writeDurationMs(state.songwriting)
+  const nextTime = writeDurationMs(state.skills)
   const studio = STUDIOS[state.studioLevel]
 
   return (
@@ -24,8 +25,8 @@ export function Studio() {
             </div>
             <Bar value={pct} height={8} />
             <p className="dim small">
-              It lands in the vault on its own. Songwriting {Math.round(state.songwriting)} speeds
-              this up and lifts the number it lands with.
+              It lands in the vault on its own. Songwriting decides the number, rhythm decides how
+              long this takes.
             </p>
             <Btn variant="ghost" small onClick={() => dispatch({ type: 'CANCEL_WRITE' })}>
               Scrap it
@@ -46,17 +47,61 @@ export function Studio() {
       </section>
 
       <section className="card">
-        <h3>Skills</h3>
-        <Skill
-          name="Songwriting"
-          value={state.songwriting}
-          note="Writes faster, lands better numbers."
-        />
-        <Skill
-          name="Virality"
-          value={state.virality}
-          note="Reach goes wider and records last longer."
-        />
+        <div className="row between">
+          <h3>Training</h3>
+          <span className="dim tiny">{state.training ? 'one at a time' : 'pick one'}</span>
+        </div>
+        {SKILLS.map((skill) => {
+          const level = state.skills[skill.id]
+          const maxed = level >= TUNE.maxSkill
+          const active = state.training?.skill === skill.id
+          const tLeft = active
+            ? Math.max(0, state.training!.startedAt + state.training!.durationMs - now)
+            : 0
+          const tPct = active ? 100 - (tLeft / state.training!.durationMs) * 100 : 0
+          return (
+            <div className="skill" key={skill.id}>
+              <div className="row between">
+                <span>
+                  {skill.emoji} {skill.name}
+                </span>
+                <span className="mono">
+                  {level}
+                  <em className="dim"> / {TUNE.maxSkill}</em>
+                </span>
+              </div>
+              {active ? (
+                <>
+                  <Bar value={tPct} tone="violet" height={5} />
+                  <div className="row between">
+                    <span className="dim tiny">training… {duration(tLeft)}</span>
+                    <Btn small variant="ghost" onClick={() => dispatch({ type: 'STOP_TRAIN' })}>
+                      Stop
+                    </Btn>
+                  </div>
+                </>
+              ) : (
+                <>
+                  <Bar value={level} tone="violet" height={5} />
+                  <div className="row between">
+                    <span className="dim tiny">{skill.blurb}</span>
+                    <Btn
+                      small
+                      variant="ghost"
+                      disabled={maxed || !!state.training}
+                      onClick={() => dispatch({ type: 'TRAIN', skill: skill.id as SkillId })}
+                    >
+                      {maxed ? 'Maxed' : duration(trainDurationMs(level))}
+                    </Btn>
+                  </div>
+                </>
+              )}
+            </div>
+          )
+        })}
+        <p className="dim tiny">
+          Each level takes longer than the last, and you can only train one thing at once.
+        </p>
       </section>
 
       <section className="card">
@@ -80,22 +125,9 @@ export function Studio() {
         </div>
         <div className="row between">
           <span className="dim small">Songs in vault</span>
-          <span className="small">{state.songs.filter((s) => !s.releasedAt).length}</span>
+          <span className="small">{state.songs.filter((s) => !s.releasedAt && !s.albumId).length}</span>
         </div>
       </section>
-    </div>
-  )
-}
-
-function Skill({ name, value, note }: { name: string; value: number; note: string }) {
-  return (
-    <div className="skill">
-      <div className="row between">
-        <span>{name}</span>
-        <span className="mono">{Math.round(value)}</span>
-      </div>
-      <Bar value={value} tone="violet" height={5} />
-      <span className="dim tiny">{note}</span>
     </div>
   )
 }

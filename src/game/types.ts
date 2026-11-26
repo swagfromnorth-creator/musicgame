@@ -1,12 +1,14 @@
 // ---------------------------------------------------------------------------
 // STARMAKER v1 — core types
 //
-// Everything that matters is measured in four numbers: cash, fans, streams and
-// reach. Skills bend those numbers; timers decide when you get to touch them.
+// Four numbers matter: cash, fans, streams and reach. Three skills bend them.
+// Everything that takes time runs off a wall-clock timestamp so it keeps
+// running whether or not the tab is open.
 // ---------------------------------------------------------------------------
 
 export type SongId = string
 export type AlbumId = string
+export type SkillId = 'songwriting' | 'rhythm' | 'virality'
 
 export interface Song {
   id: SongId
@@ -24,15 +26,19 @@ export interface Song {
   lifespanH: number
   streams: number
   albumId: AlbumId | null
+  /** index into PROMO_TIERS, chosen before release and paid on release */
+  promoTier: number
 }
 
 export interface Album {
   id: AlbumId
   title: string
   songIds: SongId[]
-  /** the album's own reach figure, shown in the vault */
+  /** the album's own reach figure */
   reach: number
   createdAt: number
+  releasedAt: number | null
+  promoTier: number
 }
 
 export interface JobListing {
@@ -41,13 +47,19 @@ export interface JobListing {
   emoji: string
   pay: number
   durationMs: number
+  tier: number
 }
 
 export interface ActiveJob {
-  listingId: string
   title: string
   emoji: string
   pay: number
+  startedAt: number
+  durationMs: number
+}
+
+export interface ActiveTraining {
+  skill: SkillId
   startedAt: number
   durationMs: number
 }
@@ -70,6 +82,13 @@ export interface StudioDef {
   blurb: string
 }
 
+export interface PromoTier {
+  name: string
+  cost: number
+  reach: number
+  blurb: string
+}
+
 export interface LogEntry {
   id: string
   at: number
@@ -86,8 +105,7 @@ export interface GameState {
   totalStreams: number
   gigsPlayed: number
 
-  songwriting: number
-  virality: number
+  skills: Record<SkillId, number>
   studioLevel: number
 
   songs: Song[]
@@ -97,10 +115,10 @@ export interface GameState {
   jobsRefreshAt: number
   activeJob: ActiveJob | null
 
+  training: ActiveTraining | null
   writingStartedAt: number | null
   writingDurationMs: number
 
-  /** temporary multipliers */
   promoUntil: number
   boostUntil: number
   gigReadyAt: Record<string, number>
@@ -114,9 +132,16 @@ export type Action =
   | { type: 'TICK'; now: number }
   | { type: 'WRITE' }
   | { type: 'CANCEL_WRITE' }
+  | { type: 'TRAIN'; skill: SkillId }
+  | { type: 'STOP_TRAIN' }
   | { type: 'RENAME_SONG'; id: SongId; title: string }
+  | { type: 'SET_SONG_PROMO'; id: SongId; tier: number }
   | { type: 'RELEASE_SONG'; id: SongId }
-  | { type: 'RELEASE_ALBUM'; title: string; songIds: SongId[] }
+  | { type: 'CREATE_ALBUM'; title: string; songIds: SongId[] }
+  | { type: 'RENAME_ALBUM'; id: AlbumId; title: string }
+  | { type: 'SET_ALBUM_PROMO'; id: AlbumId; tier: number }
+  | { type: 'RELEASE_ALBUM'; id: AlbumId }
+  | { type: 'DISSOLVE_ALBUM'; id: AlbumId }
   | { type: 'TAKE_JOB'; id: string }
   | { type: 'DO_GIG'; id: string }
   | { type: 'BUY_STUDIO' }
