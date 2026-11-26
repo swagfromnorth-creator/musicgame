@@ -34,3 +34,11 @@ html = html.replace('<title>', () => '<!-- Standalone build: open this file in a
 const out = path.resolve('starmaker.html')
 fs.writeFileSync(out, html)
 console.log(`wrote ${out} (${(fs.statSync(out).size / 1024).toFixed(0)} KB)`)
+
+// GitHub Pages serves the /docs folder, so the same file lands there under a
+// plain URL a phone can open: https://<user>.github.io/musicgame/
+const docs = path.resolve('docs')
+fs.mkdirSync(docs, { recursive: true })
+fs.writeFileSync(path.join(docs, 'index.html'), html)
+fs.writeFileSync(path.join(docs, '.nojekyll'), '')
+console.log(`wrote ${path.join(docs, 'index.html')} (Pages entry point)`)
