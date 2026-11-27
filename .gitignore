@@ -1,0 +1,10 @@
+node_modules
+dist
+.cache
+.tmptest
+.DS_Store
+*.local
+*.tsbuildinfo
+
+# generated single-file build (npm run single)
+starmaker.html
